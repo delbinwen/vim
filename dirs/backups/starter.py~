@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+
+# Built-in modules
+import sys
+
+# Additional modules
+import boto.swf.layer1 as layer1
+from flowy.boilerplate import start_activity_worker
+from flowy.boilerplate import start_workflow_worker
+from flowy.boilerplate import workflow_starter
+import swf.swf_transcode
+
+
+# TODO: It's not a good idea to hard code aws access id/key.
+l1 = layer1.Layer1(aws_access_key_id='AKIAIRSEZZD65TO5HMEQ',
+                   aws_secret_access_key='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')
+l1.DefaultRegionName = 'ap-northeast-1'
+
+
+def start_workflow(domain, name, version, task_list, *args, **kwargs):
+    ws = workflow_starter(domain, name, version, task_list, decision_duration=60, layer1=l1)
+    return ws.start(*args, **kwargs)
+
+
+def start_workflow_runner(domain, task_list, package):
+    start_workflow_worker(domain, task_list, l1, False, package=package)
+
+
+def start_activity_runner(domain, task_list, package):
+    start_activity_worker(domain, task_list, l1, False, package=package)
+
+
+def main(*args, **kwargs):
+    start_activity_runner('wesley-swf', 'default', package=swf.swf_transcode)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

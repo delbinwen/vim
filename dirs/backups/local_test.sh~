@@ -1,0 +1,130 @@
+#! /bin/bash
+#
+# local_test.sh
+# Copyright (C) 2014 Drake Guan <drakeguan@kkbox.com>
+#
+# refer to ticket #81292
+
+# Download a source video
+echo '===== Source inspection ====='
+inv local.source_inspection -s http://videopass-theater.s3.amazonaws.com/sources/world_of_warcraft_mists_of_pandaria_53.mp4
+
+# Audio transcoding
+echo '===== Transcode audio ====='
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t audio -p 0
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t audio -p 1
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t audio -p 2
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t audio -p 3
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t audio -p 4
+
+# Video transcoding
+echo '===== Transcode video ====='
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 0
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 1
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 2
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 3
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 4
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 5
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 6
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 7
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 8
+# for MSS
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 9
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 10
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 11
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 12
+inv local.transcode -s /tmp/videopass-encoding/world_of_warcraft_mists_of_pandaria_53.mp4 -t video -p 13
+
+# Transcode status, do nothing for now
+#cat scripts/testing/local/transcode_status.json | invoke local_transcode_status
+
+# Below list files are for non-DRM.
+AUDIO_LIST_FILE="/tmp/audio_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/p0_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p1_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p2_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p3_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p4_world_of_warcraft_mists_of_pandaria_53_audio.mp4" > $AUDIO_LIST_FILE
+
+VIDEO_LIST_FILE="/tmp/video_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/p0_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p1_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p2_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p3_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p4_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p5_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p6_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p7_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p8_world_of_warcraft_mists_of_pandaria_53_video.mp4" > $VIDEO_LIST_FILE
+
+MSS_AUDIO_LIST_FILE="/tmp/audio_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/p0_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p1_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p2_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p3_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/p4_world_of_warcraft_mists_of_pandaria_53_audio.mp4" > $MSS_AUDIO_LIST_FILE
+
+MSS_VIDEO_LIST_FILE="/tmp/video_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/p9_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p10_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p11_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p12_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/p13_world_of_warcraft_mists_of_pandaria_53_video.mp4" > $MSS_VIDEO_LIST_FILE
+
+# DRM
+echo '===== DRM for MPEG-DASH/MSS =='
+inv local.encrypt_dash -a $AUDIO_LIST_FILE -v $VIDEO_LIST_FILE
+inv local.encrypt_mss -a $MSS_AUDIO_LIST_FILE -v $MSS_VIDEO_LIST_FILE
+
+# Adaptive streaming
+echo '===== Adaptive streaming ====='
+
+# DASH
+inv local.adaptive_dash -a $AUDIO_LIST_FILE -v $VIDEO_LIST_FILE -m /tmp/videopass-encoding/dash/world_of_warcraft_mists_of_pandaria_53.mpd
+
+ENC_AUDIO_LIST_FILE="/tmp/enc_audio_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/enc/p0_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p1_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p2_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p3_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p4_world_of_warcraft_mists_of_pandaria_53_audio.mp4" > $ENC_AUDIO_LIST_FILE
+
+ENC_VIDEO_LIST_FILE="/tmp/enc_videoo_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/enc/p0_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p1_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p2_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p3_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p4_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p5_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p6_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p7_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p8_world_of_warcraft_mists_of_pandaria_53_video.mp4" > $ENC_VIDEO_LIST_FILE
+
+ENC_MSS_AUDIO_LIST_FILE="/tmp/audio_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/enc/p0_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p1_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p2_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p3_world_of_warcraft_mists_of_pandaria_53_audio.mp4
+/tmp/videopass-encoding/enc/p4_world_of_warcraft_mists_of_pandaria_53_audio.mp4" > $ENC_MSS_AUDIO_LIST_FILE
+
+ENC_MSS_VIDEO_LIST_FILE="/tmp/video_list_file.$RANDOM.txt"
+echo "/tmp/videopass-encoding/enc/p9_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p10_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p11_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p12_world_of_warcraft_mists_of_pandaria_53_video.mp4
+/tmp/videopass-encoding/enc/p13_world_of_warcraft_mists_of_pandaria_53_video.mp4" > $ENC_MSS_VIDEO_LIST_FILE
+inv local.adaptive_dash -a $ENC_AUDIO_LIST_FILE -v $ENC_VIDEO_LIST_FILE -m /tmp/videopass-encoding/dash/world_of_warcraft_mists_of_pandaria_53-enc.mpd
+# HLS
+inv local.adaptive_hls -a $AUDIO_LIST_FILE -v $VIDEO_LIST_FILE -m /tmp/videopass-encoding/hls/world_of_warcraft_mists_of_pandaria_53.m3u8
+inv local.encrypt_hls -h /tmp/videopass-encoding/hls/world_of_warcraft_mists_of_pandaria_53.m3u8
+# MSS
+inv local.adaptive_mss -a $MSS_AUDIO_LIST_FILE -v $MSS_VIDEO_LIST_FILE -m /tmp/videopass-encoding/mss/world_of_warcraft_mists_of_pandaria_53
+inv local.adaptive_mss -a $ENC_MSS_AUDIO_LIST_FILE -v $ENC_MSS_VIDEO_LIST_FILE -m /tmp/videopass-encoding/mss/world_of_warcraft_mists_of_pandaria_53-enc
+
+
+# clean up intermediate files
+# rm $AUDIO_LIST_FILE
+# rm $VIDEO_LIST_FILE
+# rm $MSS_AUDIO_LIST_FILE
+# rm $MSS_VIDEO_LIST_FILE
+

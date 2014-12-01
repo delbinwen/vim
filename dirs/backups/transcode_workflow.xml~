@@ -1,0 +1,7 @@
+<workflow>
+    <activity name="source_inspection" input="">
+        <task name="transcode" input=""></task>
+        <task name="transcode" input=""></task>
+        <task name="transcode_status" input=""></task>
+    </task>
+</workflow>    

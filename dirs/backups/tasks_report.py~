@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+# Built-in modules
+import dateutil.parser
+
+# Additional modules
+from sh import glob, grep, perl, sort
+
+# local modules
+
+
+time_source_inspection_by_title=None
+time_deploy_dash_by_title=None
+time_deploy_hls_by_title=None
+time_deploy_mss_by_title=None
+
+
+def get_task_elapsed_time():
+    pass
+
+
+def get_server_elapsed_time(log_path_tml):
+    # Get the start time of the first source inspection task.
+    match_start_str = 'BEGIN-CALLING: source_inspection'
+    match_timestamp_str = 'while(<>){print "$1\n" if /at (.*);/}'
+    result = sort(perl(grep(match_start_str, glob(log_path_tml)), '-e', match_timestamp_str))
+    run_start = dateutil.parser.parse(result.stdout.splitlines()[0])
+    # Get the end time of the last deploy task.
+    match_end_str = 'END-CALLING: deploy_%s'
+    match_timestamp_str = 'while(<>){print "$1\n" if /at (.*); elapsing/}'
+    run_end = run_start
+    for adaptive in ('dash', 'hls', 'mss'):
+        result = sort(perl(grep(match_end_str % adaptive, glob(log_path_tml)), '-e', match_timestamp_str), '-r')
+        end = dateutil.parser.parse(result.stdout.splitlines()[0])
+        if end >= run_end:
+            run_end = end
+    # Calculate the duration.
+    duration = run_end - run_start
+    # Return the duration.
+    return run_start, run_end, duration
+
+
+def get_workflow_elapsed_time(log_path_tml):
+    # Get the start of source inspection of every title.
+    # Get the end of the last deploy task of every title.
+    # Calculate the duration of the workflow of every title.

@@ -1,0 +1,156 @@
+<?php
+
+class TranscodeWorkflow
+{
+    protected $_client = null;
+
+    public function run($job, &$log)
+    {
+        $sourceURL = $job->workload();
+
+        $flowBegin = time();
+        $status = $this->_sourceInspection($sourceURL);
+        if (!$status) {
+            return json_encode(array('error' => "Source Inspection $sourceURL failed."));
+        }
+
+        $isourceURLs = $this->_transcode($sourceURL);
+        $isourceVideoURLs = $isourceURLs['isource_video_urls'];
+        $isourceAudioURLs = $isourceURLs['isource_audio_urls'];
+
+        $status = $this->_transcodeStatus($sourceURL, $isourceVideoURLs, $isourceAudioURLs);
+        if (!$status) {
+            return json_encode(array('error' => "Transcode $sourceURL failed."));
+        }
+
+        $generateURLs = $this->_splitWorkflow($sourceURL, $isourceVideoURLs, $isourceAudioURLs);
+
+        $flowEnd = time();
+        $log[] = "TranscodeWorkflow elapsed: ($flowEnd - $flowBegin) src: $sourceURL"; 
+        return json_encode(array('status' => "Transcode Workflow $sourceURL success."));
+    }
+
+    public function completeCallback($task, &$results)
+    {
+        $results->{$task->unique()} = json_decode($task->data());
+    }
+
+    protected function _sourceInspection($sourceURL)
+    {
+        $client = $this->_getClient();
+
+        $workload = json_encode(array(
+            'stage' => 'source_inspection',
+            'source_url' => $sourceURL,
+        ));
+        $data = $client->doNormal('SourceInspectionTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status;
+    }
+
+    protected function _transcode($sourceURL)
+    {
+        $client = $this->_getClient();
+
+        $uniqueID = md5($sourceURL . microtime());
+
+        $results = new \stdClass();
+        for ($i = 0; $i <= 13; $i++) {
+            $workload = json_encode(array(
+                'stage' => 'transcode',
+                'source_url' => $sourceURL,
+                'stream' => 'video',
+                'profile_id' => $i,
+            ));
+            $client->addTask('TranscodeTask', $workload, $results, "video-$uniqueID-$i");
+        }
+        for ($i = 0; $i <= 4; $i++) {
+            $workload = json_encode(array(
+                'source_url' => $sourceURL,
+                'stream' => 'audio',
+                'profile_id' => $i,
+            ));
+            $client->addTask('TranscodeTask', $workload, $results, "audio-$uniqueID-$i");
+        }
+        $client->runTasks();
+
+        $errors = array();
+        $isourceVideoURLs = array();
+        $isourceAudioURLs = array();
+        $resultsArray = get_object_vars($results);
+        foreach ($resultsArray as $key => $result) {
+            if (!$result->status) {
+                $errors[] = "Transcode $key failed.";
+                continue;
+            }
+
+            list($type, $uniqueID, $index) = explode('-', $key);
+            $index = (int) $index;
+
+            if ('video' === $type) {
+                $isourceVideoURLs[$index] = $result->isource_url;
+            } else {
+                $isourceAudioURLs[$index] = $result->isource_url;
+            }
+        }
+
+        if (!empty($errors)) {
+            return array('errors' => $errors);
+        }
+
+        ksort($isourceVideoURLs);
+        ksort($isourceAudioURLs);
+
+        return array(
+            'isource_video_urls' => $isourceVideoURLs,
+            'isource_audio_urls' => $isourceAudioURLs,
+        );
+    }
+
+    protected function _transcodeStatus($sourceURL, $isourceVideoURLs, $isourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'transcode',
+            'source_url' => $sourceURL,
+            'isource_video_urls' => $isourceVideoURLs,
+            'isource_audio_urls' => $isourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('TranscodeStatusTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status;
+    }
+
+    protected function _splitWorkflow($sourceURL, $isourceVideoURLs, $isourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'source_url' => $sourceURL,
+            'isource_video_urls' => $isourceVideoURLs,
+            'isource_audio_urls' => $isourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+
+        $client->doBackground('DashWorkflow', $workload);
+        $client->doBackground('HlsWorkflow', $workload);
+        $client->doBackground('MssWorkflow', $workload);
+    }
+
+    protected function _getClient()
+    {
+        if (null === $this->_client) {
+            $client = new GearmanClient();
+            $client->addServer('gearman.videopass.kkbox-test.com');
+            $client->setCompleteCallback(array($this, 'completeCallback'));
+            $this->_client = $client;
+        }
+        return $this->_client;
+    }
+}

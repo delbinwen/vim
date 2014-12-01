@@ -1,0 +1,2 @@
+/usr/local/Cellar/openssl/1.0.1i/bin/openssl enc -aes-128-ctr -in stream_0002.ts -out stream_0002.ts.out -K 2c2d78c46d4c5f1c8cf9eb7fd456b1b8 \
+        -iv 864b4a05efe2d886       

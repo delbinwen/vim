@@ -1,0 +1,104 @@
+<?php
+
+class DashWorkflow
+{
+    protected $_client = null;
+
+    public function run($job)
+    {
+        $json = $job->workload();
+        $urls = json_decode($json);
+
+        $sourceURL = $urls->source_url;
+        $isourceVideoURLs = $urls->isource_video_urls;
+        $isourceAudioURLs = $urls->isource_audio_urls;
+
+        $isourceVideoURLs = array_slice($isourceVideoURLs, 0, 7);
+
+        $encryptedIsourceURLs = $this->_encrypt($sourceURL, $isourceVideoURLs, $isourceAudioURLs);
+
+        if (!$encryptedIsourceURLs) {
+            return json_encode(array('error' => "Encrypt Dash $sourceURL failed."));
+        }
+
+        $encryptedIsourceVideoURLs = $encryptedIsourceURLs->encrypted_isource_video_urls;
+        $encryptedIsourceAudioURLs = $encryptedIsourceURLs->encrypted_isource_audio_urls;
+
+        $dashURL = $this->_adaptive($sourceURL, $encryptedIsourceVideoURLs, $encryptedIsourceAudioURLs);
+
+        if (!$dashURL) {
+            return json_encode(array('error' => "Adaptive Dash $sourceURL failed."));
+        }
+
+        $httpURL = $this->_deploy($sourceURL, $dashURL);
+
+        if (!$httpURL) {
+            return json_encode(array('error' => "Deploy Dash $sourceURL failed."));
+        }
+
+        return json_encode(array('status' => "Deploy Dash $sourceURL to $httpURL success."));
+    }
+
+    protected function _encrypt($sourceURL, $isourceVideoURLs, $isourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'encrypt_dash',
+            'source_url' => $sourceURL,
+            'isource_video_urls' => $isourceVideoURLs,
+            'isource_audio_urls' => $isourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('EncryptDashTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result : false;
+    }
+
+    protected function _adaptive($sourceURL, $encryptedIsourceVideoURLs, $encryptedIsourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'adaptive_dash',
+            'source_url' => $sourceURL,
+            'encrypted_isource_video_urls' => $encryptedIsourceVideoURLs,
+            'encrypted_isource_audio_urls' => $encryptedIsourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('AdaptiveDashTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->dash_url : false;
+    }
+
+    protected function _deploy($sourceURL, $dashURL)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'deploy_dash',
+            'source_url' => $sourceURL,
+            'dash_url' => $dashURL,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('DeployDashTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->dash_url : false;
+    }
+
+    protected function _getClient()
+    {
+        if (null === $this->_client) {
+            $client = new GearmanClient();
+            $client->addServer('gearman.videopass.kkbox-test.com');
+            $this->_client = $client;
+        }
+        return $this->_client;
+    }
+}

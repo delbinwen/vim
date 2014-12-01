@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+
+import urllib
+import os.path
+
+localbase = '~/Downloads/ts-png/'
+urlbase = 'http://media.xiph.org/tearsofsteel/tearsofsteel-1080-png/'
+for i in range(1, 17620):
+    filename = 'graded_edit_final_%05d.png' % i
+    if not os.path.exists(localbase + filename):
+        print(filename)
+        urllib.urlretrieve(urlbase + filename, localbase)

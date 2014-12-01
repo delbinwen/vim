@@ -1,0 +1,5 @@
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("-a", "--action", help="specify the action you want to start",
+                    choices=["--start-workflow", "--start-workflow-runner", "--start-activity-runner"])
+parser.parse_args()

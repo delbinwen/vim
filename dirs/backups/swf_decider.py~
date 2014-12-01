@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+# Built-in modules
+import json
+import uuid
+
+# Additional modules
+import boto.swf.layer2
+
+# local modules
+from emilia import common
+try:
+    from emilia import config
+except ImportError:
+    from emilia import config_default as config
+
+boto.swf.layer2.set_default_credentials('AKIAIRSEZZD65TO5HMEQ', 'noypU8kfm51MB1FOkMNBAz0UuYNfJYijWALAH6Kx')
+
+
+def generate_activity_id(activity_name):
+    return activity_name+'-'+str(uuid.uuid4())
+
+
+def generate_transcode_activity_input(source_url, stream, profile_id):
+    input = {'stage': 'transcde', 'source_url': source_url, 'stream': stream,
+             'profile_id': profile_id}
+    return json.dumps(input)
+
+
+class TranscodeWorkflowDecider(boto.swf.layer2.Decider):
+    domain = config.DOMAIN
+    task_list = 'default'
+    version = '1.0'
+
+    source_url = ''
+
+    def run(self):
+        history = self.poll()
+        print history  # TODO: remove this before commiting
+        events = []
+        if 'events' in history:
+            events = history['events']
+            while 'nextPageToken' in history:
+                history = self.poll(next_page_token=history['nextPageToken'])
+                if 'events' in history:
+                    events = events + history['events']
+
+            workflow_type = history['workflowType']['name']
+
+            # Get all of the relevent events that have happened since the
+            # last_event decision task was started.
+            workflow_events = [e for e in events
+                               if e['eventId'] > history['previousStartedEventId'] and
+                               not e['eventType'].startswith('Decision')]
+
+            decisions = boto.swf.layer2.Layer1Decisions()
+
+            for event in workflow_events:
+                last_event_type = event['eventType']
+                if last_event_type == 'WorkflowExecutionStarted':
+                    if workflow_type == 'TranscodeWorkflow':
+                        attrs = event['workflowExecutionStartedEventAttributes']
+                        self.source_url = attrs['input']
+                        # The first activity is SourceInspection.
+                        input = json.dumps({'stage': 'source_inspection', 'source_url': self.source_url})
+                        print input
+                        activityId = generate_activity_id('source_inspection')
+                        decisions.schedule_activity_task(activityId, 'SourceInspection', '1.0', self.task_list, input=input)
+                    elif workflow_type == 'DashWorkflow':
+                        # Start DASH encryption.
+                        input = self.source_url
+                        activityId = generate_activity_id('encrypt_dash')
+                        decisions.schedule_activity_task(activityId, 'EncryptDash', '1.0', self.task_list, input=input)
+                elif last_event_type == 'ChildWorkflowExecutionCompleted':
+                    decisions.complete_workflow_execution()
+                elif last_event_type == 'ActivityTaskCompleted':
+                    attrs = event['activityTaskCompletedEventAttributes']
+                    activity = events[attrs['scheduledEventId'] - 1]
+                    activity_name = activity['activityTaskScheduledEventAttributes']['activityType']['name']
+
+                    if activity_name == 'SourceInspection':
+                        # Start audio transcode tasks.
+                        for audio_profile_id in range(3):
+                            input = generate_transcode_activity_input(self.source_url, 'audio', audio_profile_id)
+                            activityId = generate_activity_id('transcode')
+                            decisions.schedule_activity_task(activityId, 'Transcode', self.version, self.task_list, schedule_to_start_timeout='3600', input=input)
+                        # Start video transcode tasks.
+                        for video_profile_id in range(7):
+                            input = generate_transcode_activity_input(self.source_url, 'video', video_profile_id)
+                            activityId = generate_activity_id('transcode')
+                            decisions.schedule_activity_task(activityId, 'Transcode', self.version, self.task_list, schedule_to_start_timeout='3600', input=input)
+                    elif activity_name == 'Transcode':
+                        completed_count = sum([1 for e in events if e['eventType'] == 'ActivityTaskCompleted'])
+                        if completed_count == 10:
+                            # decisions.complete_workflow_execution()
+                            # Start sub-workflows, dash, hls, and mss.
+                            decisions.start_child_workflow_execution('DashWorkflow', self.version, 'dash-201411141223', task_list=self.task_list, input=self.source_url)
+                            decisions.start_child_workflow_execution('HlsWorkflow', self.version, 'hls-201411141747', task_list=self.task_list, input=self.source_url)
+                            decisions.start_child_workflow_execution('MssWorkflow', self.version, 'mss-201411141748', task_list=self.task_list, input=self.source_url)
+                    elif activity_name == 'EncryptDash':
+                        # Start adaptive DASH.
+                        activityId = generate_activity_id('adaptive_dash')
+                        input = self.source_url
+                        decisions.schedule_activity_task(activityId, 'AdaptiveDash', self.version, self.task_list, schedule_to_start_timeout='3600', input=input)
+                    elif activity_name == 'AdaptiveDash':
+                        # Start deploy DASH.
+                        activityId = generate_activity_id('deploy_dash')
+                        input = self.source_url
+                        decisions.schedule_activity_task(activityId, 'DeployDash', self.version, self.task_list, schedule_to_start_timeout='3600', input=input)
+                    elif activity_name == 'DeployDash':
+                        decisions.complete_workflow_execution()
+            self.complete(decisions=decisions)
+        return True

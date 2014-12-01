@@ -1,0 +1,229 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 Shuen-Huei (Drake) Guan <drakeguan@kkbox.com>
+#
+
+
+# Built-in modules
+from functools import partial
+
+# Additional modules
+
+# local modules
+try:
+    from . import config
+except ImportError:
+    from . import config_default as config
+
+
+# AWS CLI related
+# We temporarily set acl to public-read for below S3 operations.
+# TODO: We should revisit them and make acl configurable.
+# Download file
+tml = '{cmd} s3 cp "{src}" "{tgt}" --acl public-read {options}'.format
+
+AWSCLI_COPY_FILE_TML = partial(tml,
+                               cmd=config.PATH_AWSCLI,
+                               options='')
+
+AWSCLI_COPY_DIR_TML = partial(tml,
+                              cmd=config.PATH_AWSCLI,
+                              options='--recursive')
+
+AWSCLI_DOWNLOAD_TML = partial(tml,
+                              cmd=config.PATH_AWSCLI,
+                              options='')
+
+# Download directory
+AWSCLI_DOWNLOAD_DIR_TML = partial(tml,
+                                  cmd=config.PATH_AWSCLI,
+                                  options='--recursive')
+
+AWSCLI_SYNC_TML = partial(tml,
+                          cmd=config.PATH_AWSCLI,
+                          options='--recursive')
+
+# Upload file
+AWSCLI_UPLOAD_TML = AWSCLI_DOWNLOAD_TML
+
+# Upload directory
+AWSCLI_UPLOAD_DIR_TML = partial(tml,
+                                cmd=config.PATH_AWSCLI,
+                                options='--recursive')
+
+# Move file
+tml = '{cmd} s3 mv "{src}" "{tgt}" --acl public-read {options}'.format
+
+AWSCLI_MOVE_FILE_TML = partial(tml,
+                               cmd=config.PATH_AWSCLI,
+                               options='--only-show-errors')
+
+# Move directory
+AWSCLI_MOVE_DIR_TML = partial(tml,
+                              cmd=config.PATH_AWSCLI,
+                              options='--recursive --only-show-errors')
+
+# Delete file
+tml = '{cmd} s3 rm "{src}" {options}'.format
+AWSCLI_DEL_FILE_TML = partial(tml, cmd=config.PATH_AWSCLI, options='')
+
+# Delete directory
+AWSCLI_DEL_DIR_TML = partial(tml,
+                             cmd=config.PATH_AWSCLI,
+                             options='--recursive')
+
+
+# source inspection
+tml = ('{ffprobe} -i "{filepath}"'
+       ' -v quiet -show_format -show_streams'
+       ' -print_format json').format
+FFMPEG_PROBE_TML = partial(tml,
+                           ffprobe=config.PATH_FFPROBE)
+
+
+# source preparation
+tml = ('{ffmpeg} -loglevel fatal -y -i "{in_filepath}"'
+       ' -c:a copy -dn -sn -vn -f mp4'
+       ' "{out_filepath}"').format
+FFMPEG_EXTRACT_AUDIO_TML = partial(tml,
+                                   ffmpeg=config.PATH_FFMPEG)
+
+tml = ('{ffmpeg} -loglevel fatal -y -i "{in_filepath}"'
+       ' -c:v copy -dn -sn -an -f mp4'
+       ' "{out_filepath}"').format
+FFMPEG_EXTRACT_VIDEO_TML = partial(tml,
+                                   ffmpeg=config.PATH_FFMPEG)
+
+
+# audio transcoding
+tml = ('{ffmpeg} -loglevel fatal -y -i "{input_filepath}"'
+       ' -dn -sn -vn -map 0'
+       ' -c:a libfdk_aac -b:a {audio_bitrate}k -ar 44100'
+       ' "{output_filepath}"').format
+FFMPEG_TRANSCODE_AUDIO_TML = partial(tml, ffmpeg=config.PATH_FFMPEG)
+
+# video transcoding
+tml = ('{ffmpeg} -loglevel fatal -y -i "{input_filepath}"'
+       ' -dn -sn -an -threads 0 -map 0'
+       ' -c:v libx264 -b:v {video_bitrate}k -vsync 1 -pix_fmt yuv420p'
+       ' -profile:v high -level {level}'
+       ' -rc-lookahead 0 -r {fps} -g {gop} -refs 1 -muxdelay 0 -pass 1'
+       ' {ffmpeg_flags}'
+       ' -x264opts stitchable:scenecut=0'
+       ' -vf scale="trunc(oh*a*sar/2)*2:{height}" -f mp4'
+       ' /dev/null').format
+FFMPEG_TRANSCODE_VIDEO_1_TML = partial(tml, ffmpeg=config.PATH_FFMPEG)
+
+tml = ('{ffmpeg} -loglevel fatal -y -i "{input_filepath}"'
+       ' -dn -sn -an -threads 0 -map 0'
+       ' -c:v libx264 -b:v {video_bitrate}k -vsync 1 -pix_fmt yuv420p'
+       ' -profile:v high -level {level}'
+       ' -rc-lookahead 0 -r {fps} -g {gop} -refs 1 -muxdelay 0 -pass 2'
+       ' {ffmpeg_flags}'
+       ' -x264opts stitchable:scenecut=0'
+       ' -vf scale="trunc(oh*a*sar/2)*2:{height}"'
+       ' "{output_filepath}"').format
+FFMPEG_TRANSCODE_VIDEO_2_TML = partial(tml, ffmpeg=config.PATH_FFMPEG)
+
+
+# DRM ####
+# PlayReady record template
+PLAYREADY_RECORD_TML = '''<WRMHEADER xmlns="http://schemas.microsoft.com/DRM/2007/03/PlayReadyHeader" version="4.0.0.0"><DATA><PROTECTINFO><KEYLEN>16</KEYLEN><ALGID>AESCTR</ALGID></PROTECTINFO><KID>{key_id}</KID><CHECKSUM>{checksum}</CHECKSUM><LA_URL>{la_url}</LA_URL><LUI_URL>{lui_url}</LUI_URL></DATA></WRMHEADER>'''
+
+MP4BOX_DRM_XML_TML = r'''
+<GPACDRM type="CENC AES-CTR">
+    <DRMInfo type="pssh" version="0">
+        <BS ID128="9a04f07998404286ab92e65be0885f95" />     <!-- PlayReady SystemID -->
+        <BS bits="32" value="{header_obj_len}" endian="little" />
+        <BS bits="16" value="1" endian="little" />          <!-- Number of records -->
+
+        <!-- First record -->
+        <BS bits="16" value="1" endian="little" />          <!-- Rights Management record type -->
+        <BS bits="16" value="{record_len}" endian="little" />
+        <BS data64="{record_data}" />
+    </DRMInfo>
+    <DRMInfo type="pssh" version="0">
+        <BS ID128="edef8ba979d64acea3c827dcd51d21ed" />     <!-- Widevine SystemID edef8ba9-79d6-4ace-a3c8-27dcd51d21ed -->
+
+        <BS bits="8" value="8" />                           <!-- Type:Algorithm -->
+        <BS bits="8" value="1" />                           <!-- AES-CTR -->
+
+        <BS bits="8" value="18" />                          <!-- Type:Key ID -->
+        <BS bits="8" value="16" />                          <!-- Key ID Length -->
+        <BS ID128="{widevine_key_id}" />                    <!-- Key ID -->
+
+        <BS bits="8" value="42" />                          <!-- Type:Type -->
+        <BS bits="8" string="{provider}" />                 <!-- Provider -->
+
+        <BS bits="8" value="34" />                          <!-- Type:Content ID -->
+        <BS bits="8" string="{content_id}" />               <!-- Content ID -->
+    </DRMInfo>
+    <CrypTrack trackID="1" IsEncrypted="1" IV_size="8" first_IV="0x{first_IV}" saiSavedBox="senc" >
+        <key KID="0x{key_id}" value="0x{key}" />
+    </CrypTrack>
+</GPACDRM>
+'''
+
+# MP4Box encryption command
+tml = ('{cmd} -noprog -crypt "{drm_info_path}"'
+       ' "{media_file_path}" -tmp "{tmp_dir_path}" -out "{output_file_path}"').format
+MP4BOX_ENCRYPTION_TML = partial(tml, cmd=config.PATH_MP4BOX,
+                                tmp_dir_path=config.TMP_DIR2)
+
+# OpenSSL encryption command
+tml = ('{cmd} enc -aes-128-ctr'
+       ' -in "{source_ts}" -out "{encrypted_ts}"'
+       ' -K {key} -iv {iv}').format
+OPENSSL_ENCRYPTION_TML = partial(tml,
+                                 cmd=config.PATH_OPENSSL)
+
+# PlayReady patch for .m3u8 file
+PLAYREADY_PATCH_FOR_M3U8_TML = r'''#EXT-X-KKPLAYREADY:IV={iv_base64},DATA={playready_base64}'''
+
+
+# DASH ####
+# DASH generation
+tml = ('{cmd} -noprog -dash {seg_length} -frag {frag_length} -rap'
+       ' -segment-name %s_ -bs-switching no'
+       ' -out "{mpd_filename}"').format
+MP4BOX_DASH_TML = partial(tml,
+                          cmd=config.PATH_MP4BOX)
+
+# patch .mp4 to remove pasp box
+tml = '{cmd} --pasp-remove "{filepath}"'.format
+MP4_PATCH_REMOVE_PASP_TML = partial(tml,
+                                    cmd=config.PATH_MP4TRACT)
+
+# path audio init.mp4 for ftyp's brand
+tml = '{cmd} moov "{filepath}" "{moov_filepath}"'.format
+EXTRACT_MOOV_TML = partial(tml,
+                           cmd=config.PATH_MP4EXTRACT)
+
+# HLS ####
+# HLS generation
+tml = ('{ffmpeg} -loglevel fatal -y -i "{audio_filepath}" -i "{video_filepath}"'
+       ' -dn -sn -threads 0 -map 0:0 -map 1:0'
+       ' -f ssegment -segment_time {segment_time} -segment_list {segment_list}'
+       ' -segment_list_entry_prefix {prefix}/ -segment_format mpegts'
+       ' -c:v copy -c:a copy -vbsf h264_mp4toannexb -flags -global_header'
+       ' "{prefix}/stream_%04d.ts"').format
+FFMPEG_HLS_TML = partial(tml,
+                         ffmpeg=config.PATH_FFMPEG)
+
+
+# MSS ####
+# MSS generation (currently, convert from DASH package)
+tml = ('{php} "{mpd2ss_folder}/mpd2ss.php"'
+       ' "{mpd_filepath}" "{mss_folder}" {resolution}').format
+MSS_CONVERSION_TML = partial(tml,
+                             php=config.PATH_PHP)
+
+# Web ####
+# index.html generation
+tml = ('{pandoc}'
+       ' --from markdown_github --to html --standalone'
+       ' -H {style}'
+       ' "{markdown}" --output "{html}"').format
+MARKDOWN_TO_HTML_TML = partial(tml, pandoc=config.PATH_PANDOC)

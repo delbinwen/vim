@@ -1,0 +1,10 @@
+#! /bin/bash
+#
+# adaptive_hls.sh
+# Copyright (C) 2014 drakeguan <drakeguan@kkbox.com>
+#
+#
+
+source /home/ubuntu/virenv/bin/activate
+cd /home/ubuntu/videopass-encoding/
+invoke gearman.adaptive_hls

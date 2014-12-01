@@ -1,0 +1,7 @@
+#!/bin/bash
+
+archive=videopass-encoding-$(date +"%Y%m%d-%H%M").tgz
+
+tar czf $archive videopass-encoding
+aws --profile videopass s3 cp $archive s3://videopass-mezzanine/videopass-encoding/
+rm $archive

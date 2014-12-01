@@ -1,0 +1,277 @@
+{
+   "titles" : [
+      {
+         "id":"The Future Forms of Life",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900001_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900001_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900001_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900001_m/720/Manifest"
+      },
+      {
+         "id":"A Taste of Japan",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900002_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900002_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900002_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900002_m/720/Manifest"
+      },
+      {
+         "id":"Blinky",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900004_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900004_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900004_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900004_m/720/Manifest"
+      },
+      {
+         "id":"URSUS",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900005_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900005_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900005_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900005_m/720/Manifest"
+      },
+      {
+         "id":"Surf in Siberia",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900006_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900006_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900006_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900006_m/720/Manifest"
+      },
+      {
+         "id":"World of Warcraft: Mists of Pandaria Cinematic Trailer",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900007_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900007_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900007_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900007_m/720/Manifest"
+      },
+      {
+         "id":"Assassin's Creed Unity Meets Parkour in Real Life - 4K",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900008_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900008_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900008_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900008_m/720/Manifest"
+      },
+      {
+         "id":"Origami (2012)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900009_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900009_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900009_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900009_m/720/Manifest"
+      },
+      {
+         "id":"The 25 Best Films of 2013: A Video Countdown",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900010_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900010_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900010_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900010_m/720/Manifest"
+      },
+      {
+         "id":"Big Buck Bunny",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900011_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900011_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900011_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900011_m/720/Manifest"
+      },
+      {
+         "id":"INTERNET_tid_9900012_m",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900012_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900012_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900012_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900012_m/720/Manifest"
+      },
+      {
+         "id":"&alpha;7S Unparalleled 4K image quality (from Sony: Official Video Release)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900013_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900013_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900013_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900013_m/720/Manifest"
+      },
+      {
+         "id":"Counter with ticks",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900014_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900014_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900014_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900014_m/720/Manifest"
+      },
+      {
+         "id":"VOGUE Feb 2011: Drama and ballet",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900015_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900015_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900015_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900015_m/720/Manifest"
+      },
+      {
+         "id":"Tears of Steel",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900016_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900016_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900016_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900016_m/720/Manifest"
+      },
+      {
+         "id":"KKBOX Live A-Lin 01",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KKBOX_tid_9900017_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KKBOX_tid_9900017_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KKBOX_tid_9900017_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KKBOX_tid_9900017_m/720/Manifest"
+      },
+      {
+         "id":"KKBOX Live A-Lin 02",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KKBOX_tid_9900018_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KKBOX_tid_9900018_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KKBOX_tid_9900018_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KKBOX_tid_9900018_m/720/Manifest"
+      },
+      {
+         "id":"Japanese TV Commercials (2014 weeks 34 &amp; 35)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900019_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900019_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900019_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900019_m/720/Manifest"
+      },
+      {
+         "id":"KKBOX Live 品冠 02",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KKBOX_tid_9900020_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KKBOX_tid_9900020_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KKBOX_tid_9900020_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KKBOX_tid_9900020_m/720/Manifest"
+      },
+      {
+         "id":"SPEC〜警視庁公安部公安第五課 未詳事件特別対策係事件簿〜",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900021_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900021_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900021_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900021_m/720/Manifest"
+      },
+      {
+         "id":"クローン ベイビー",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900022_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900022_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900022_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900022_m/720/Manifest"
+      },
+      {
+         "id":"Tomorrow〜陽はまたのぼる〜",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900023_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900023_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900023_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900023_m/720/Manifest"
+      },
+      {
+         "id":"ケイゾク",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900024_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900024_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900024_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900024_m/720/Manifest"
+      },
+      {
+         "id":"輪舞曲",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900025_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900025_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900025_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900025_m/720/Manifest"
+      },
+      {
+         "id":"ピュア・ラブ (1)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900026_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900026_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900026_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900026_m/720/Manifest"
+      },
+      {
+         "id":"パーシー・ジャクソンとオリンポスの神々 (24p)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900027_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900027_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900027_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900027_m/720/Manifest"
+      },
+      {
+         "id":"パーシー・ジャクソンとオリンポスの神々 (60i)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900028_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900028_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900028_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900028_m/720/Manifest"
+      },
+      {
+         "id":"妖精ファイター (60i)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900029_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900029_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900029_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900029_m/720/Manifest"
+      },
+      {
+         "id":"妖精ファイター (24p)",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/KDDI_tid_9900030_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/KDDI_tid_9900030_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900030_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/KDDI_tid_9900030_m/720/Manifest"
+      },
+      {
+         "id":"Madonna Super Bowl Half-Time Show",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900031_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900031_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900031_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900031_m/720/Manifest"
+      },
+      {
+         "id":"少女時代 - Genie",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/INTERNET_tid_9900032_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/INTERNET_tid_9900032_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900032_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/INTERNET_tid_9900032_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435485",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435485_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435485_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435485_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435485_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435486",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435486_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435486_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435486_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435486_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435475",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435475_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435475_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435475_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435475_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435476",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435476_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435476_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435476_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435476_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435477",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435477_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435477_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435477_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435477_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435478",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435478_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435478_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435478_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435478_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435479",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435479_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435479_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435479_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435479_m/720/Manifest"
+      },
+      {
+         "id":"ASMIK_tid_0000435481",
+         "dash-cenc":"http://videopass-theater.s3.amazonaws.com/beta/release/dash/ASMIK_tid_0000435481_m.mpd",
+         "hls-playready":"http://videopass-theater.s3.amazonaws.com/beta/release/hls/ASMIK_tid_0000435481_m.m3u8",
+         "mss-playready-480":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435481_m/480/Manifest",
+         "mss-playready-720":"http://videopass-theater.s3.amazonaws.com/beta/release/mss/ASMIK_tid_0000435481_m/720/Manifest"
+      }
+   ]
+}

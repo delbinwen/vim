@@ -1,0 +1,100 @@
+<?php
+
+class HlsWorkflow
+{
+    protected $_client = null;
+
+    public function run($job)
+    {
+        $json = $job->workload();
+        $urls = json_decode($json);
+
+        $sourceURL = $urls->source_url;
+        $isourceVideoURLs = $urls->isource_video_urls;
+        $isourceAudioURLs = $urls->isource_audio_urls;
+
+        $isourceVideoURLs = array_slice($isourceVideoURLs, 0, 7);
+
+        $hlsURL = $this->_adaptive($sourceURL, $isourceVideoURLs, $isourceAudioURLs);
+
+        if (!$hlsURL) {
+            return json_encode(array('error' => "Adaptive Hls $sourceURL failed."));
+        }
+
+        $encryptedHlsURL = $this->_encrypt($sourceURL, $hlsURL);
+
+        if (!$encryptedHlsURL) {
+            return json_encode(array('error' => "Encrypt Hls $sourceURL failed."));
+        }
+
+        $httpURL = $this->_deploy($sourceURL, $encryptedHlsURL);
+
+        if (!$httpURL) {
+            return json_encode(array('error' => "Deploy Hls $sourceURL failed."));
+        }
+
+        return json_encode(array('status' => "Deploy Hls $sourceURL to $httpURL success."));
+    }
+
+    protected function _adaptive($sourceURL, $isourceVideoURLs, $isourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'adaptive_hls',
+            'source_url' => $sourceURL,
+            'isource_video_urls' => $isourceVideoURLs,
+            'isource_audio_urls' => $isourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('AdaptiveHlsTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->hls_url : false;
+    }
+
+    protected function _encrypt($sourceURL, $hlsURL)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'encrypt_hls',
+            'source_url' => $sourceURL,
+            'hls_url' => $hlsURL,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('EncryptHlsTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->encrypted_hls_url : false;
+    }
+
+    protected function _deploy($sourceURL, $encryptedHlsURL)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'deploy_hls',
+            'source_url' => $sourceURL,
+            'encrypted_hls_url' => $encryptedHlsURL,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('DeployHlsTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->hls_url : false;
+    }
+
+    protected function _getClient()
+    {
+        if (null === $this->_client) {
+            $client = new GearmanClient();
+            $client->addServer('gearman.videopass.kkbox-test.com');
+            $this->_client = $client;
+        }
+        return $this->_client;
+    }
+}

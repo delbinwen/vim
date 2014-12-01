@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 Shuen-Huei (Drake) Guan <drakeguan@kkbox.com>
+#
+
+
+r'''Sample config.py.'''
+
+# Built-in modules
+# Additional modules
+# local modules
+from config_default import *
+
+PATH_OPENSSL = '/usr/local/Cellar/openssl/1.0.1i/bin/openssl'
+
+LOCAL_TMP_DIR = '/tmp/videopass-encoding'
+TMP_DIR1 = '/tmp/videopass-encoding'
+TMP_DIR2 = '/tmp/videopass-encoding'
+
+# Turn off ingestion report
+INGESTION_REPORT = False
+
+# S3 bucket variables
+S3_BUCKET_SOURCE = 'videopass-mezzanine'
+S3_BUCKET_ISOURCE = 'videopass-depot'
+S3_BUCKET_ENC_ISOURCE = S3_BUCKET_ISOURCE
+S3_BUCKET_PACKAGE = S3_BUCKET_ISOURCE
+S3_BUCKET_STAGE = S3_BUCKET_ISOURCE
+S3_BUCKET_RELEASE = 'videopass-cinema'
+S3_BUCKET_WEB = S3_BUCKET_RELEASE
+# override S3 prefix variables
+S3_ISOURCE_PREFIX = 'swf.1/isources/'
+S3_ENC_ISOURCE_PREFIX = 'swf.1/encrypted_isources/'
+S3_ADAPTIVE_PREFIX = 'swf.1/adaptive/'
+S3_STAGE_PREFIX = 'swf.1/stage/'
+S3_RELEASE_PREFIX = 'swf.1/'
+
+GEARMAN_ROOT_SCRIPT_PATH = '/Users/wesleywen/Work/Videopass/videopass-encoding/scripts/'

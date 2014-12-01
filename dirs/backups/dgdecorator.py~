@@ -1,0 +1,427 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+
+u"""Several useful decorators.
+
+Quotation-------------------------------------------------------
+Google Python Style Guide
+http://google-styleguide.googlecode.com/svn/trunk/pyguide.html#Function_and_Method_Decorators
+
+Definition:
+    Decorators for Functions and Methods (a.k.a "the @ notation"). The most
+    common decorators are @classmethod and @staticmethod, for converting
+    ordinary methods to class or static methods. However, the decorator syntax
+    allows for user-defined decorators as well. Specifically, for some function
+    my_decorator, this:
+
+    >>> def my_decorator(func):
+    >>>     return new_func(*args, **kwargs):
+    >>>         return func(*args, **kwargs)
+    >>>     return new_func
+    >>> class C(object):
+    >>>     @my_decorator
+    >>>     def method(self):
+    >>>         # method body ...
+    >>>         pass
+
+    is equivalent to:
+
+    >>> def my_decorator(func):
+    >>>     return new_func(*args, **kwargs):
+    >>>         return func(*args, **kwargs)
+    >>>     return new_func
+    >>> class C(object):
+    >>>     def method(self):
+    >>>         # method body ...
+    >>>         pass
+    >>>     method = my_decorator(method)
+
+Pros:
+    Elegantly specifies some transformation on a method; the transformation
+    might eliminate some repetitive code, enforce invariants, etc.
+
+Cons:
+    Decorators can perform arbitrary operations on a function's arguments or
+    return values, resulting in surprising implicit behavior. Additionally,
+    decorators execute at import time. Failures in decorator code are pretty
+    much impossible to recover from.
+
+Decision:
+    Use decorators judiciously when there is a clear advantage. Decorators
+    should follow the same import and naming guidelines as functions.
+    Decorator pydoc should clearly state that the function is a decorator.
+    Write unit tests for decorators.
+
+    Avoid external dependencies in the decorator itself (e.g. don't rely
+    on files, sockets, database connections, etc.), since they might not be
+    available when the decorator runs (at import time, perhaps from pychecker
+    or other tools). A decorator that is called with valid parameters should
+    (as much as possible) be guaranteed to succeed in all cases.
+Quotation-------------------------------------------------------
+
+
+"""
+
+
+__version__ = '3.0'
+
+
+# Built-in modules
+import functools
+import time
+
+# Additional modules
+import arrow
+import decorator
+
+# local modules
+import dglog
+
+
+
+def chain(*decs):
+    '''Chain/compose a list of decorators.
+
+    :ref: http://stackoverflow.com/a/5409569/261718
+
+    :param decs list: a list of decorators
+    :return: a new decorator.
+    '''
+    def deco(f):
+        for dec in reversed(decs):
+            f = dec(f)
+        return f
+    return deco
+
+
+def decorator_apply(deco, func):
+    """Apply a decorator `deco` onto `func` with signature-preserving.
+
+    Decorate a function by preserving the signature even if deco
+    is not a signature-preserving decorator.
+
+    :param deco: a decorator
+    :param func: a decorated function
+
+    :returns: a well-behaved decorated function
+
+    ex.
+    >>> def foo(a, b):
+    >>>     '''a simple function, just returns (a+b).'''
+    >>>     return (a+b)
+    >>> def decoLog(func):
+    >>>     def new_func(*args, **kwargs):
+    >>>         print '%s is decorated!' % func.__name__
+    >>>         return func(*args, **kwargs)
+    >>>     return new_func
+    >>> foo2 = decorator_apply(decoLog, foo)
+    >>> assert(foo2(1, 3) == foo(1, 3))
+    >>> assert(foo2.__name__ == 'foo')
+    >>> assert(foo2.__doc__ == 'a simple function, just returns (a+b).')
+    >>> import inspect
+    >>> assert(inspect.getargspec(foo2)[0] == ['a', 'b'])
+    """
+
+    return decorator.FunctionMaker.create(
+        func, 'return decorated(%(signature)s)',
+        dict(decorated=deco(func)), __wrapped__=func)
+
+
+def deprecated(newfunc):
+    u"""This decorator would mark a function as deprecated by warning msg.
+
+    :param newfunc: a suggested function to use
+    :type  newfunc: string
+
+    It will result in a warning log before the function is called.
+
+    ex.
+    >>> @deprecated('operator.add')
+    >>> def foo(a, b):
+    >>>     return (a + b)
+    >>> print foo(1, 2)
+    [05:25] WARNING: Deprecated: 'foo', use 'operator.add' instead.
+    3
+    """
+    @decorator.decorator
+    def deco(func, *args, **kwargs):
+        msg = "Deprecated: '%s', use '%s' instead." % (func.__name__, newfunc)
+        dglog.warn(msg)
+        return func(*args, **kwargs)
+    return deco
+
+
+@decorator.decorator
+def logArgs(func, *args, **kwargs):
+    u"""This decorator logs the (possibly) full prototype while invoking the function.
+
+    The log uses dglog with level=INFO
+
+    ref: http://www.siafoo.net/article/68
+    """
+    msg = 'Calling "%s" with args %s and kwargs %s' % (func.__name__, args, kwargs)
+    dglog.info(msg)
+    return func(*args, **kwargs)
+
+
+@decorator.decorator
+def logArgs2(func, *args, **kwargs):
+    u"""This decorator logs the (possibly) full prototype while invoking the function.
+
+    This is an alternative implementation to `logArgs`.
+    The log uses dglog with level=INFO
+
+    ref: http://wiki.python.org/moin/PythonDecoratorLibrary#Easy_Dump_of_Function_Arguments
+    """
+    argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
+    fname = func.func_name
+    msg = fname + ":" + ', '.join(
+        '%s=%r' % entry
+        for entry in zip(argnames, args) + kwargs.items())
+    dglog.info(msg)
+    return func(*args, **kwargs)
+
+
+@decorator.decorator
+def logPerformance(func, *args, **kwargs):
+    u'''This decorator logs the the performance (time) and arguments while invoking the function.
+
+    :refer: :func:`logArgs2`
+    '''
+    argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
+    argstr = ', '.join('%s=%r' % entry for entry in zip(argnames, args) + kwargs.items())
+    start = arrow.now()
+    dglog.info('BEGIN-CALLING: %s; with args: %s; at %s;' % (func.__name__, argstr, start))
+    result = func(*args, **kwargs)
+    end = arrow.now()
+    dglog.info('END-CALLING: %s; with args: %s; at %s; elapsing %s;' % (func.__name__, argstr, end, end-start))
+    return result
+
+
+@decorator.decorator
+def disabled(func, *args, **kwargs):
+    u"""This decorator disables the provided function, and does nothing.
+
+    ref: http://wiki.python.org/moin/PythonDecoratorLibrary#Enable.2BAC8-Disable_Decorators
+
+    ex.
+    >>> @disabled
+    >>> def foo(a, b):
+    >>>     return a+b
+    >>> print foo(1, 2)
+    None
+    """
+    return None
+
+
+@decorator.decorator
+def unchanged(func, *args, **kwargs):
+    u"""This decorator doesn't add any magic.
+
+    ref: http://wiki.python.org/moin/PythonDecoratorLibrary#Enable.2BAC8-Disable_Decorators
+
+    ex.
+    >>> global_enable_flag = True
+    >>> state = enabled if global_enable_flag else disabled
+    >>> @state
+    >>> def special_function_foo():
+    >>>     print "function was enabled"
+    """
+    return func(*args, **kwargs)
+
+
+# define this as equivalent to unchanged, for nice symmetry with disabled
+enabled = unchanged
+
+
+@decorator.decorator
+def elementwise(func, arg):
+    u"""This decorator converts a function with one argument into an elementwise function.
+
+    Note: `func` must be a function with only one argument.
+
+    ref: http://www.ibm.com/developerworks/linux/library/l-cpdecor.html
+
+    ex.
+    >>> @elementwise
+    >>> def compute(x):
+    >>>     return x**2
+    >>> compute(10)
+    100
+    >>> compute([1, 3, 5])
+    [1, 9, 25]
+    """
+    if hasattr(arg, '__getitem__'): # is a sequence
+        return type(arg)([func(item) for item in arg])
+    else:
+        return func(arg)
+
+
+def memoized(func):
+    u"""This decorator provides memoized behaviours.
+
+    Quotation:-------- Wikipedia
+    A memoized function "remembers" the results corresponding to some set
+    of specific inputs. Subsequent calls with remembered inputs return the
+    remembered result rather than recalculating it, thus eliminating the
+    primary cost of a call with given parameters from all but the first
+    call made to the function with those parameters.
+    Quotation:----------------------------
+    """
+    return decorator_apply(Memoized, func)
+
+
+def tmemoized(func):
+    u"""This decorator provides timed memoized behaviours.
+
+    Refer to memoized().
+    """
+    return decorator_apply(TimedMemoized, func)
+
+
+def tail_recursive(func):
+    u"""tail_recursive decorator.
+
+    This decorator is pretty impressive, and should give you some food for
+    your mind ;) Notice that there is no recursion limit now, and you can
+    easily compute factorial(1001) or larger without filling the stack frame.
+    Notice also that the decorator will not work on functions which are not
+    tail recursive, such as the following:
+
+    ex.
+    >>> @tail_recursive
+    >>> def factorial(n, acc=1):
+    >>>     "The good old factorial"
+    >>>     if n == 0: return acc
+    >>>     return factorial(n-1, n*acc)
+    >>> print factorial(4)
+    24
+
+    The following is not a tail-recursive function:
+
+    >>> def fact(n): # this is not tail-recursive
+    >>>    if n == 0: return 1
+    >>>    return n * fact(n-1)
+    (reminder: a function is tail recursive if it either returns a value
+    without making a recursive call, or returns directly the result of
+    a recursive call).
+    """
+    return decorator_apply(TailRecursive, func)
+
+
+class Memoized(object):
+    u"""memoization or cache decorator.
+
+    Decorator that caches a function's return value each time it is called.
+    If called later with the same arguments, the cached value is returned, and
+    not re-evaluated.
+
+    Note: It is suggested to use `memoized` instead of this one for
+    better signature preserving.
+
+    ref: http://wiki.python.org/moin/PythonDecoratorLibrary
+    """
+
+    def __init__(self, func):
+        self.func = func
+        self.cache = {}
+
+    def __call__(self, *args):
+        try:
+            return self.cache[args]
+        except KeyError:
+            value = self.func(*args)
+            self.cache[args] = value
+            return value
+        except TypeError:
+            # uncachable -- for instance, passing a list as an argument.
+            # Better to not cache than to blow up entirely.
+            return self.func(*args)
+
+    def __repr__(self):
+        u"""Return the function's docstring."""
+        return self.func.__doc__
+
+    def __get__(self, obj, objtype):
+        u"""Support instance methods."""
+        return functools.partial(self.__call__, obj)
+
+
+class TimedMemoized(object):
+    u"""memoization or cache decorator with timeout.
+
+    Note: It is suggested to use `tmemoized` instead of this one for
+    better signature preserving.
+
+    Refer to Memoized().
+    """
+
+    def __init__(self, func):
+        self.func = func
+        self.cache = {}
+        self.life = 10*60 #TODO: fixed life for timeout.
+        self.timeout = 0
+
+    def __call__(self, *args):
+        if time.time() > self.timeout:
+            self.cache = {}
+            self.timeout = time.time() + self.life
+
+        try:
+            return self.cache[args]
+        except KeyError:
+            value = self.func(*args)
+            self.cache[args] = value
+            return value
+        except TypeError:
+            # uncachable -- for instance, passing a list as an argument.
+            # Better to not cache than to blow up entirely.
+            return self.func(*args)
+
+    def __repr__(self):
+        u"""Return the function's docstring."""
+        return self.func.__doc__
+
+    def __get__(self, obj, objtype):
+        u"""Support instance methods."""
+        return functools.partial(self.__call__, obj)
+
+
+class TailRecursive(object):
+    u"""tail_recursive decorator based on Kay Schluehr's recipe
+
+    ref: http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/496691
+
+    with improvements by Michele Simionato and George Sakkis.
+    http://micheles.googlecode.com/hg/decorator/documentation.html#the-functionmaker-class
+
+    Note. use `tail_recursive` instead.
+    """
+
+    def __init__(self, func):
+        self.func = func
+        self.firstcall = True
+        self.CONTINUE = object() # sentinel
+        self.argskwd = (None, None) # add this to make pylint happy. Drake
+
+    def __call__(self, *args, **kwd):
+        CONTINUE = self.CONTINUE
+        if self.firstcall:
+            func = self.func
+            self.firstcall = False
+            try:
+                while True:
+                    result = func(*args, **kwd)
+                    if result is CONTINUE: # update arguments
+                        args, kwd = self.argskwd
+                    else: # last call
+                        return result
+            finally:
+                self.firstcall = True
+        else: # return the arguments of the tail call
+            self.argskwd = args, kwd
+            return CONTINUE
+
+

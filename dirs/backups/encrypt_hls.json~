@@ -1,0 +1,4 @@
+{
+	"source_url" : "s3://videopass-theater/mezzanine/INTERNET_tid_9900014_m.mp4",
+	"hls_url" : "s3://videopass-theater/hls/world_of_warcraft_mists_of_pandaria.m3u8"
+}

@@ -1,0 +1,245 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 Shuen-Huei (Drake) Guan <drakeguan@kkbox.com>
+
+
+# Built-in modules
+import os
+import pprint
+import shutil
+
+# Additional modules
+import invoke
+import m3u8
+import path
+
+# local modules
+import template
+import common
+try:
+    import config
+except ImportError:
+    import config_default as config
+import dgdecorator
+import dglog
+import s3
+
+
+def generate_av_tuples(audio_filepaths, video_filepaths):
+    '''Return a list of tuples from audio and video files.
+
+    TODO: This might be a temporary function.
+
+    rtype: a list of tuples. Ex. [(p0, audio_01.mp4, video_01.mp4), ...]
+    '''
+    tuples = []
+    for idx, video_filepath in enumerate(video_filepaths):
+        if idx == 0:
+            audio_filepath = audio_filepaths[0]
+        elif 0 < idx <= 3:
+            audio_filepath = audio_filepaths[1]
+        elif 3 < idx <= 6:
+            audio_filepath = audio_filepaths[2]
+        elif idx == 7:
+            audio_filepath = audio_filepaths[3]
+        elif idx == 8:
+            audio_filepath = audio_filepaths[4]
+        else:
+            assert Exception('Too many video input files.')
+        prefix = 'p%d' % idx
+        tuples.append((prefix, audio_filepath, video_filepath))
+    return tuples
+
+
+@dgdecorator.logPerformance
+def generate_hls(prefix, audio_filepath, video_filepath):
+    '''The REAL HLS generator.
+
+    :param prefix: used as m3u8's basename and folder name for segments. Ex, p0.
+    :param audio_filepath: audio-only file.
+    :param video_filepath: video-only file.
+    :rtype: .m3u8 file in path.path().
+    '''
+    path.path(prefix).makedirs_p()
+    playlist = path.path(prefix+'.m3u8')
+    cmd_text = template.FFMPEG_HLS_TML.format(
+            segment_time = float(config.SEG_LENGTH)/1000,
+            segment_list = playlist,
+            audio_filepath = audio_filepath,
+            video_filepath = video_filepath,
+            prefix = prefix)
+    dglog.info(invoke.run(cmd_text, hide='both').stdout)
+    return playlist
+
+
+def generate_hls_from_av_tuple(av_tuple):
+    prefix, audio_filepath, video_filepath = av_tuple
+    return generate_hls(prefix, audio_filepath, video_filepath)
+
+
+@dgdecorator.logPerformance
+def make_hls_selfcontained(m3u8s, output_m3u8, package_folder='.'):
+    '''Make a self-contained HLS.
+
+    Ex,
+    Input:
+        m3u8s: ['/tmp/p0.m3u8', '/tmp/p1.m3u8', '/tmp/p2.m3u8']
+        output_m3u8: '/media/TOS.m3u8'
+        package_folder: 'TOS.hls'
+
+        where in /tmp/p0.m3u8:
+            ooxx/p0_stream_0001.m3u8
+            ooxx/p0_stream_0002.m3u8
+        in /tmp/p1.m3u8:
+            asdf/p1_stream_0001.m3u8
+            asdf/p1_stream_0002.m3u8
+        in /tmp/p2.m3u8:
+            p2/stream_0001.m3u8
+            p2/stream_0002.m3u8
+
+    Output:
+        /media/TOS.m3u8
+        /media/TOS/p0.m3u8
+        /media/TOS/ooxx/p0_stream_0001.m3u8
+        /media/TOS/ooxx/p0_stream_0002.m3u8
+        /media/TOS/p1.m3u8
+        /media/TOS/asdf/p1_stream_0001.m3u8
+        /media/TOS/asdf/p1_stream_0002.m3u8
+        /media/TOS/p2.m3u8
+        /media/TOS/p2/stream_0001.m3u8
+        /media/TOS/p2/stream_0002.m3u8
+
+    :param m3u8s: a list of m3u8 filenames, each stands for a profile.
+    :param output_m3u8: output .m3u8 filepath
+    :param package_folder: (relative) sub-folder to put all sub-m3u8 files,
+        default to '.', the same folder to output_m3u8.
+
+    :rtype: filename (path.path()), output_m3u8
+    '''
+    tmpl = r'''#EXTM3U
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=128000,RESOLUTION=426x240
+{prefix}/p0.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=214000,RESOLUTION=426x240
+{prefix}/p1.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=414000,RESOLUTION=426x240
+{prefix}/p2.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=564000,RESOLUTION=640x360
+{prefix}/p3.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=796000,RESOLUTION=854x480
+{prefix}/p4.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1296000,RESOLUTION=854x480
+{prefix}/p5.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2096000,RESOLUTION=854x480
+{prefix}/p6.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=4128000,RESOLUTION=1280x720
+{prefix}/p7.m3u8
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=7192000,RESOLUTION=1280x720
+{prefix}/p8.m3u8
+'''
+
+    output_m3u8 = path.path(output_m3u8) # ex, /media/TOS.m3u8
+    root = output_m3u8.dirname() # ex, /media
+    sub_root = root.joinpath(package_folder) # ex, /media/TOS
+
+    # makedir
+    root.makedirs_p()
+    shutil.rmtree(sub_root, ignore_errors=True)
+    sub_root.makedirs_p()
+
+    # move files into the output folder
+    for sub_m3u8 in map(path.path, m3u8s): # ex, /tmp/p0.m3u8
+        # move segments
+        # for segment in (l.strip() for l in sub_m3u8.lines() if not l.startswith('#')):
+        for segment in get_media_segments(sub_m3u8, rel=True):
+            # segment: segment source in relative path. ex, ooxx/p0_stream_0001.ts
+            src = sub_m3u8.dirname().joinpath(segment) # ex, /tmp/ooxx/p0_stream_0001.ts
+            tgt = sub_root.joinpath(src.dirname().basename()) # ex, /media/TOS/ooxx
+            tgt.makedirs_p()
+            src.move(tgt) # ex, /tmp/p0/stream_0001.ts => /media/TOS/ooxx
+        # remove sub-folder
+        # shutil.rmtree(sub_m3u8.dirname(), ignore_errors=True)
+        # move sub_m3u8
+        sub_m3u8.move(sub_root) # ex, /tmp/p0.m3u8 => /media/TOS
+
+    # generate the output m3u8 file
+    text = tmpl.format(prefix=package_folder)
+    output_m3u8.write_text(text)
+    return output_m3u8
+
+
+def get_media_playlists_path(playlist_filepath, rel=False, echo=False):
+    '''Return a list of media playlists from a master playlist.
+
+    :param playlist_filepath: filepath of master playlist.
+    :param rel: boolean to indicate returns in relative path or absolute path.
+    :rtype: a list of media playlists in path.path() object form.
+    '''
+    master = m3u8.load(playlist_filepath)
+    if rel:
+        result = [path.path(p.uri) for p in master.playlists]
+    else:
+        result = [path.path(p.absolute_uri) for p in master.playlists]
+    if echo:
+        pprint.pprint(result)
+    return result
+
+
+def get_media_segments(playlist_filepath, rel=False, echo=False):
+    '''Return a list of media segments from a media playlist.
+
+    :param playlist_filepath: filepath of media playlist.
+    :param rel: boolean to indicate returns in relative path or absolute path.
+    :rtype: a list of segments in path.path() object form.
+    '''
+    master = m3u8.load(playlist_filepath)
+    if rel:
+        result = [path.path(seg.uri) for seg in master.segments]
+    else:
+        result = [path.path(seg.absolute_uri) for seg in master.segments]
+    if echo:
+        pprint.pprint(result)
+    return result
+
+
+@dgdecorator.logPerformance
+def upload_hls_to_s3(hls_filepath, s3_bucket, root_s3_key):
+    '''Upload .m3u8 and all associated files onto S3.'''
+    hls_filepath = path.path(hls_filepath)
+    root = hls_filepath.dirname()
+    root_s3_key = path.path(root_s3_key).dirname()
+    for playlist in get_media_playlists_path(hls_filepath, rel=True):
+        root2 = root.joinpath(playlist.dirname())
+        src = root.joinpath(playlist)
+        tgt = root_s3_key.joinpath(playlist)
+        # print src, 'to', tgt
+        s3.upload_file_to_s3(src, s3_bucket, tgt)
+        for segment in get_media_segments(src, rel=True):
+            src = root2.joinpath(segment)
+            tgt = root_s3_key.joinpath(playlist.dirname()).joinpath(segment)
+            # print src, 'to', tgt
+            s3.upload_big_file_to_s3(src, s3_bucket, tgt)
+
+    # print hls_filepath, 'to', root_s3_key.joinpath(hls_filepath.basename())
+    s3_key = root_s3_key.joinpath(hls_filepath.basename())
+    s3.upload_big_file_to_s3(hls_filepath, s3_bucket, s3_key)  # TODO: not a big file
+
+
+def delete_media_segments(playlist_filepath):
+    '''Delete media segments in the playlist.
+    '''
+    m3u8_obj = m3u8.load(playlist_filepath)
+    for seg in m3u8_obj.segments:
+        os.unlink(seg.absolute_uri)
+
+
+@dgdecorator.logPerformance
+def delete_hls(playlist_filepath):
+    '''Delete .m3u8 and all referenced playlists and segments inside.'''
+    # delete direct media segments
+    delete_media_segments(playlist_filepath)
+    # delete media segments in sub- (media) playlist if available
+    for playlist in get_media_playlists_path(playlist_filepath, rel=False):
+        delete_hls(playlist)
+    os.unlink(playlist_filepath)

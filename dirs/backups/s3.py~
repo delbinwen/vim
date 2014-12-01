@@ -1,0 +1,244 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 Shuen-Huei (Drake) Guan <drakeguan@kkbox.com>
+#
+
+
+# Built-in modules
+import itertools
+import json
+import math
+import os
+import time
+
+# Additional modules
+import boto #TODO: remember to prepare .boto
+import filechunkio
+import invoke
+import path
+import sh
+
+# local modules
+import common
+try:
+    import config
+except ImportError:
+    import config_default as config
+import dgdecorator
+import dglog
+try:
+    import template
+except ImportError:
+    import template_default as template
+
+
+def full_key(s3_bucket=config.S3_BUCKET_DEFAULT, *args):
+    '''Return a full S3 object key/path.
+    '''
+    return os.path.join('s3://' + s3_bucket, *args)
+
+
+def public_url(s3_key):
+    """Return the public URL for a S3 key if available.
+
+    If there is something wrong, an empty string is returned."""
+    if not s3_key.startswith('s3://'):
+        dglog.error('param s3key: ' + s3_key + ' is not valid S3 key.')
+        return ''
+
+    urls = s3_key.split('/')[2:]  # skip 's3' and ''
+    urls[0] = 'http://' + urls[0] + '.s3.amazonaws.com'  # hand-made rule
+    return os.path.join(*urls)
+
+
+def get_encoding_servers(public=True):
+    '''Return a list of encoding servers' IP.'''
+    def get_instance_name(instance):
+        '''Get instance's name.'''
+        try:
+            for tag in instance['Tags']:
+                if tag['Key'] == 'Name':
+                    return tag['Value'] or '' # it might be None or something else!
+        except KeyError:
+            pass
+        return ''
+
+    try:
+        output = sh.aws('ec2', 'describe-instances')
+    except sh.ErrorReturnCode_255:
+        # TODO: remove this when there is no permission issue
+        ips = [u'54.95.140.32', u'54.95.198.213', u'176.32.70.235', u'175.41.223.186']
+    else:
+        result = json.loads(output.stdout)
+        instances = itertools.chain(*[i['Instances'] for i in result['Reservations']])
+        instances = [i for i in instances if 'encoding-server' in get_instance_name(i)]
+        if public:
+            ips = [i['PublicIpAddress'] for i in instances]
+        else:
+            ips = [i['PrivateIpAddress'] for i in instances]
+    return ['ubuntu@'+ip for ip in ips]
+
+
+def run_with_retry(cmd, max_count=5, msg=''):
+    '''Try to execute 'cmd' at most 'max_count' times.
+
+    :param cmd command to execute
+    :param max_count the max number of times to retry
+    :param msg the message to save to log and/or print to stdout
+    '''
+    retries = 0
+    delay = 180  # default delay between retries
+    while retries < max_count:
+        try:
+            return common.run(cmd)
+        except invoke.exceptions.Failure as e:
+            dglog.exception(e)
+
+            retries += 1
+            dglog.info('[RUN_WITH_RETRY](%d/%d): %s' % (retries, max_count, msg))
+    return None
+
+
+def upload_dir_to_s3(dirpath, s3_bucket, s3_key, acl='public-read'):
+    '''Upload `filepath`, the whole folder, onto S3 through awscli.
+
+    :param dirpath: a local directory.
+    :param s3_bucket: S3 bucket name, e.g. videopass-theater
+    :param s3_key: a s3 prefix key, something like /tmp/ooxx/
+    :param acl: string, could be private, public-read (default),
+        public-read-write and authenticated-read.
+    '''
+    if not s3_key.endswith('/'):
+        s3_key = s3_key + '/'
+    dirpath = path.path(dirpath)
+    if not dirpath.isdir():
+        raise ValueError('The dirpath must be a directory.')
+    tgt = full_key(s3_bucket, s3_key)
+    # TODO: acl is not implemented yet here.
+    cmd_text = template.AWSCLI_UPLOAD_DIR_TML(src=dirpath, tgt=tgt)
+    run_with_retry(cmd_text, 5, 'Retry upload dir: %s' % dirpath)
+
+
+def upload_file_to_s3(filepath, s3_bucket, s3_key, acl='public-read'):
+    """Upload 'filepath', the file, onto S3 through awscli."""
+    cmd = template.AWSCLI_UPLOAD_TML(src=filepath,
+                                     tgt=full_key(s3_bucket, s3_key))
+    run_with_retry(cmd, 5, 'Retry upload file: %s' % filepath)
+
+
+def upload_big_file_to_s3(filepath, s3_bucket, s3_key, acl='public-read'):
+    '''Upload `filepath`, the big file, onto S3 through boto.
+
+    :param acl: string, could be private, public-read (default),
+    public-read-write and authenticated-read.
+    '''
+    # Connect s3
+    s3 = boto.connect_s3()
+    bucket = s3.get_bucket(s3_bucket)
+    # Get the file info
+    filepath = path.path(filepath)
+    file_size = filepath.getsize()
+    # Create a multipart upload request
+    mp = bucket.initiate_multipart_upload(s3_key)
+    # Use a chunk size of 15 MiB (feel free to change this)
+    chunk_size = 15728640  # 15 * 1024 * 1024
+    chunk_count = int(math.ceil(file_size / chunk_size))
+    # Send the file parts, using FileChunkIO to create a file-like object
+    # that points to a certain byte range within the original file. We
+    # set bytes to never exceed the original file size.
+    for i in range(chunk_count + 1):
+        offset = chunk_size * i
+        bytes_ = min(chunk_size, file_size - offset)
+        with filechunkio.FileChunkIO(filepath, 'r', offset=offset,
+                                     bytes=bytes_) as fp:
+            mp.upload_part_from_file(fp, part_num=i + 1)
+    # Finish the upload
+    mp.complete_upload()
+    # Setup ACL
+    bucket.set_acl(acl, s3_key)
+
+
+def download_big_file_from_s3(source_url, download_folder=config.DIR_WORK,
+                              download_filename=None, random_filename=False):
+    '''Download a huge (GB level) file from S3.
+
+    Making use of `awscli` to download from S3.
+    If `download_folder` doesn't exist, it would get created.
+
+    :param source_url: file's S3 url.
+    :param download_folder: destination folder to save the downloaded file, default to DIR_WORK.
+    :param download_filename: target filename. it would replace `download_folder`, default to None.
+    :param random_filename: randomized filename? it would overwrite all the above.
+    :rtype: filename of downloaded file (as path.path())
+    '''
+    if random_filename:
+        target = common.named_tempfile(suffix='.mov', prefix=path.path(source_url).namebase+'_')
+        download_folder = target.dirname()
+    elif download_filename:
+        target = path.path(download_filename).abspath()
+        download_folder = target.dirname()
+    elif download_folder:
+        if not download_folder.endswith('/'):
+            download_folder = download_folder + '/'
+        download_folder = path.path(download_folder).abspath()
+        target = download_folder.joinpath(path.path(source_url).basename())
+    else:
+        raise Exception
+    download_folder.makedirs_p()
+
+    cmd_text = template.AWSCLI_DOWNLOAD_TML(src=source_url, tgt=target)
+    run_with_retry(cmd_text, 5, 'Retry download big file: %s' % source_url)
+    return target
+
+
+@dgdecorator.logPerformance
+def download_dir_from_s3(dirpath, download_folder=config.DIR_WORK,
+                         download_dirname=None, random_dirname=False):
+
+    if download_folder:
+        download_folder = path.path(download_folder).abspath()
+        if not download_folder.endswith('/'):
+            download_folder = download_folder + '/'
+    download_folder.makedirs_p()
+
+    cmd_text = template.AWSCLI_DOWNLOAD_DIR_TML(src=dirpath,
+                                                tgt=download_folder)
+    run_with_retry(cmd_text, 5, 'Retry download dir: %s' % dirpath)
+    return download_folder
+
+
+def copy_file(src_path, tgt_path):
+    cmd_text = template.AWSCLI_COPY_FILE_TML(src=src_path, tgt=tgt_path)
+    return run_with_retry(cmd_text, 5, 'Retry copy file: %s' % src_path)
+
+
+def copy_dir(src_path, tgt_path):
+    cmd_text = template.AWSCLI_COPY_DIR_TML(src=src_path, tgt=tgt_path)
+    return run_with_retry(cmd_text, 5, 'Retry copy dir: %s' % src_path)
+
+
+def delete_file(src_path):
+    cmd_text = template.AWSCLI_DEL_FILE_TML(src=src_path)
+    run_with_retry(cmd_text, 5, 'Retry delete file: %s' % src_path)
+
+
+def delete_dir(src_path):
+    cmd_text = template.AWSCLI_DEL_DIR_TML(src=src_path)
+    run_with_retry(cmd_text, 5, 'Retry delete directory: %s' % src_path)
+
+
+def move_file_within_s3(src_s3_path, tgt_s3_path):
+    """Move file, src_s3_path, to target path, tgt_s3_path."""
+    result = copy_file(src_s3_path, tgt_s3_path)
+    if result is not None:
+        delete_file(src_s3_path)
+
+
+@dgdecorator.logPerformance
+def move_dir_within_s3(src_s3_path, tgt_s3_path):
+    """Move directory, src_s3_path, to target path, tgt_s3_path."""
+    result = copy_dir(src_s3_path, tgt_s3_path)
+    if result is not None:
+        delete_dir(src_s3_path)

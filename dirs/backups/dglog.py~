@@ -1,0 +1,1056 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+
+"""Logging utility module.
+
+This module aims to provide several utility logging functions/classes
+to ease your coding and debug. It is designed in heart to be a central and
+powerful logging module, more advanced than system-wide `logging` module.
+The initial idea is to extend more advanced `LogBook` by providing several
+handlers and utility functions, and after that, I keep adding some more stuff
+to make this module as useful as possible.
+
+There are several situations suitable a logging mechanism, and the below
+just provides some hints:
+
+* Access log.
+* Error log.
+* Audit log.
+
+Tutorials
+---------
+
+print replacement
+^^^^^^^^^^^^^^^^^
+
+First, let's start with a simple and common logging.
+The logger is designed to substitute for `print` function. ::
+
+    import dglog
+    def factorial(x):
+        if x == 0:
+            return 1
+        else:
+            ret = x * factorial(x-1)
+            dglog.error('factorial(%d) = %d' % (x, ret))
+            return ret
+    factorial(5)
+    [2011-11-16 01:35] ERROR: Generic: factorial(1) = 1
+    [2011-11-16 01:35] ERROR: Generic: factorial(2) = 2
+    [2011-11-16 01:35] ERROR: Generic: factorial(3) = 6
+    [2011-11-16 01:35] ERROR: Generic: factorial(4) = 24
+    [2011-11-16 01:35] ERROR: Generic: factorial(5) = 120
+
+Here we use the default logger (channel name = 'Generic')
+cause it is easy to use without creating any objects.
+And we use its method `error` to display an informative message.
+
+
+customized logger
+^^^^^^^^^^^^^^^^^
+
+Secondly, if you like, you can create your own logger with different
+channel name such that you can tell the logging messages apart by this
+name later on because there are too many logging messages everywhere
+and yours is just one of them. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    logger = dglog.Logger(__name__)
+    def convertMesh(meshFile):
+        logger.error('begin the checking process.')
+        dgCheckRigging.checkAll()
+        dgFinalCleanupTexture.performCheck()
+        logger.error('end the checking process.')
+    convertMesh('/tmp/ooxx.obj')
+    [2011-11-16 01:35] ERROR: dgCheck.py: begin the checking process.
+    [2011-11-16 01:35] ERROR: dgCheck.py: end the checking process.
+
+Here, the channel name is assigned as *__name__*, which is the filename of the module,
+which helps debugging a lot.
+
+
+
+logging levels
+^^^^^^^^^^^^^^
+
+Of course, we are not limited to use *error*, and actually there are some
+different functions we can use to even tell the importance of the message.
+*error* means a *logging level* and there are several de-facto levels,
+which are common to programmers' community as following:
+
+* CRITICAL - for errors that lead to termination
+* ERROR - for error that occur, but are handled
+* WARNING(WARN) - for exceptional circumstances that might not be errors
+* NOTICE - for non-error messages you usually want to see
+* INFO - for messages you usually don't want to see
+* DEBUG - for debug messages
+* NOTEST - the lowest level
+
+::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    dglog.info("Let's start process something!")
+    [2011-11-16 11:11] INFO: Generic: Let's start process something!
+    dglog.debug("The argument to 'maxCamVersion' is %s " % outfile)
+    [2011-11-16 11:12] DEBUG: Generic: The argument to 'maxCamVersion' is //3dnfs/shows/qq/...
+    dglog.error("Check naming convention: (seq name)_(shot name)_mainCam!")
+    [2011-11-16 11:13] ERROR: Generic: Check naming convention: (seq name)_(shot name)_mainCam!
+    dglog.critical("Something crashes cause our renderfarm is lost!")
+    [2011-11-16 11:14] CRITICAL: Generic: Something crashes cause our renderfarm is lost!
+
+Here is another stuff, the `setStdoutLevel`. The default behaviour
+of stdout handler is to show logs with level equal or above `WARNING`.
+That is, the logs are filtered out if their logging level are weaker/lower.
+And you can call `setStdoutLevel` with lower level filtering criteria.
+I use `dglog.NOTEST` such that any log will show up no matter what's level it is.
+
+In our observation, all you need to do is think about two things:
+
+* Do you need your own logger with different channel name instead of the default one?
+* Which logging level you should use for your logging message?
+
+
+
+magical logging decorators
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Now, it's time to see some magic. `dglog` also provide some really amazing
+logging decorators to ease your debugging. Logging decorator menas you don't
+need to invoke logger's function explicitly!
+
+Let's say, you like to display a message everytime a function is called.
+Then, just apply an auto-logging to a function. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    @dglog.logFunction
+    def foo(a, b):
+        return a+b
+    foo(1, 2)
+    [2011-11-14 06:01] DEBUG: trace: foo(1, 2)
+    foo(100, 200)
+    [2011-11-14 06:21] DEBUG: trace: foo(100, 200)
+
+
+
+
+Apply an advanced auto-logging to a function. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    @dglog.logFunctionAdv
+    def foo(a, b):
+        return a+b
+    foo(1, 6)
+    [2011-11-14 06:01] DEBUG: trace: foo(1, 6) in ooxx.py:37
+
+
+
+
+Apply an auto-logging to a method. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    class A(object):
+        @dglog.logMethod
+        def foo(self, a=1, b=1):
+            return a+b
+    a = A()
+    a.foo()
+    [2011-11-14 06:01] DEBUG: trace: A.foo(1, 1)
+
+
+
+
+
+Apply an advanced auto-logging to a method. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    class A(object):
+        @dglog.logMethodAdv
+        def foo(self, a=1, b=1):
+            return a+b
+    a = A()
+    a.foo()
+    [2011-11-14 06:01] DEBUG: trace: A.foo(1, 1) in ooxx.py:48
+
+
+
+
+
+Apply an auto-logging to a method or function. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    @dglog.logCall
+    def foo(a, b):
+        return a+b
+    class A(object):
+        @dglog.logCall
+        def foo(self, a=1, b=1):
+            return a+b
+    foo(0, 0)
+    [2011-11-14 06:01] DEBUG: trace: foo(0, 0)
+    a = A()
+    a.foo()
+    [2011-11-14 06:01] DEBUG: trace: A.foo(1, 1) in ooxx.py:98
+
+The way that `logCall` can differentiate functions and methods is dependent
+on the first argument's name. For methods, it should be *self*! Without
+this prior, logCall can not recognize a method and will treat it as a normal
+function instead!
+
+Furthermore, `logCall` is a little (really tiny) slower than `logFunction`
+and `logMethod`. The performance penalty is really small but just let you
+know this.
+
+
+
+
+
+Apply an advanced auto-logging to all methods defined in the *current* class. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    @dglog.logClassMethodsAdv
+    class A(object):
+        def foo(self, a=1, b=1):
+            return a+b
+        def bar(self, a=1, b=1):
+            return a*b
+    a = A()
+    a.foo(3, 5)
+    [2011-11-14 06:01] DEBUG: trace: A.foo(3, 5) in ooxx.py:101
+    a.bar(1, 6)
+    [2011-11-14 06:01] DEBUG: trace: A.bar(1, 6) in ooxx.py:133
+
+The above code won't work in Python 2.5, but you can use the following form. ::
+
+    import dglog
+    dglog.setStdoutLevel(dglog.NOTSET)
+    class A(object):
+        def foo(self, a=1, b=1):
+            return a+b
+        def bar(self, a=1, b=1):
+            return a*b
+    A = dglog.logClassMethodsAdv(A)
+
+
+.. note::
+
+    Some logging functions are decorators. Use it as clever as possible.
+    Also, there is actually some performance penalty in decorators and if it is
+    the issue, re-think about your task and pursue some alternative ways if
+    necessary.
+
+Module contents
+---------------
+
+Variables:
+
+* :data:`NOTSET`, `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`
+
+Functions:
+
+* :func:`Logger` - Get a logger.
+* :func:`debug`, `info`, `notice`, `warning`, `error`, `critical`
+* :func:`setStdoutLevel` - logging level less than this will not display. (WARNING)
+* :func:`setFileLevel` - logging level above this will be saved. (NOTEST)
+* :func:`setFilename` - set filename for logs if they are going to be saved.
+* :func:`enableFile` - enable file logging (default is off).
+* :func:`disableFile` - disable file logging.
+* :func:`toggleFile` - toggle file logging.
+"""
+
+
+__version__ = '3.0'
+
+
+###############################################################################
+# Import modules
+###############################################################################
+
+# Built-in modules
+import atexit
+import getpass
+import inspect
+import os
+import socket
+import sys
+import tempfile
+import time
+import traceback
+
+# Additional modules
+import decorator
+# pylint: disable=W0611
+import logbook
+from logbook import StreamHandler, RotatingFileHandler, NullHandler, Handler
+from logbook.base import _missing
+from logbook import debug, info, notice, warn, warning, error, critical, exception
+# pylint: enable=W0611
+
+# local modules
+
+
+###############################################################################
+# Constants
+###############################################################################
+
+# logging levels
+# pylint: disable=W0611
+from logbook import CRITICAL, ERROR, WARNING, NOTICE, INFO, DEBUG, NOTSET
+# pylint: enable=W0611
+
+#### format strings
+TRACER_FORMAT_STRING = (
+    u'[{record.time:%H:%M:%S}] '
+    u'{record.level_name}: {record.message}'
+)
+# pylint: disable=W0611
+from logbook.handlers import DEFAULT_FORMAT_STRING
+# pylint: enable=W0611
+
+
+###############################################################################
+# Globals
+###############################################################################
+
+# logger manager's repository, the mapping is 'channel name' -> logger
+__loggers = {}
+
+# The logger for all logging functions defined in `dglog`.
+_logger = None
+
+# add a null handler in __init()
+_null_handler = None
+
+# add a stdout handler in __init()
+_stdout_handler = None
+
+# add a rotating file handler in __init()
+_file_handler = None
+
+
+###############################################################################
+# Exceptions
+###############################################################################
+
+
+###############################################################################
+# Functions
+###############################################################################
+
+#
+# Mixins by Inheritance vs. by Decorator...Let's Try Decorators (Python recipe)
+# ref: http://code.activestate.com/recipes/577824-mixins-by-inheritance-vs-by-decoratorlets-try-deco/
+#
+def __add_mixin(cls, mixin, force=False):
+    """ Add the public attributes of a mixin to another class.
+
+    Attribute name collisions result in a TypeError if force is False.
+    If a mixin is an ABC, the decorated class is registered to it,
+    indicating that the class implements the mixin's interface.
+    """
+
+    for name, value in mixin.__dict__.items():
+        if name.startswith("_"):
+            continue
+        if not force and hasattr(cls, name):
+            #raise TypeError("name collision ({})".format(name))
+            raise TypeError("name collision (%s)" % name)
+        setattr(cls, name, value)
+    try:
+        mixin.register(cls)
+    except AttributeError:
+        pass
+
+def __mixes_in(mixins, force=False):
+    """This class decorator factory adds mixins using add_mixin.
+
+    :param mixins: a list of mixin class
+    :type  mixins: list
+    :param force: to enforce application of duplicated mixins' attributes
+    :type  force: bool
+
+    :returns: a class with enhancement by mixins
+    """
+
+    def deco(cls):
+        """empty"""
+        for mixin in mixins:
+            __add_mixin(cls, mixin, force)
+        return cls
+    return deco
+
+def Logger(name=None):
+    """Get a logger with the specified name (channel name)
+
+    creating it if it doesn't yet exist.
+
+    :param name: logger's channel name, optional
+    :type  name: string
+    """
+
+    return __loggers.setdefault(name, logbook.Logger(name))
+
+def logPrefix(msg):
+    u"""This decorator logs a message before invoking it.
+
+    The `msg` will use logbook with level=DEBUG.
+
+    :param msg: a message to display before the function call
+    :type  msg: string
+
+    ex.
+    >>> @logPrefix('oh my god')
+    >>> def func(a, b):
+    >>>     print (a + b)
+    >>> func(1, 2)
+    [2011-11-11 06:46] DEBUG: trace: oh my god
+    3
+    """
+
+    @decorator.decorator
+    def new_deco(func, *args, **kwargs):
+        """empty"""
+        _logger.debug(msg)
+        return func(*args, **kwargs)
+    return new_deco
+
+def logPostfix(msg):
+    u"""This decorator logs a message after invoking it.
+
+    The `msg` will use logbook with level=DEBUG.
+
+    :param msg: a message to display after the function call
+    :type  msg: string
+
+    ex.
+    >>> @logPostfix('oh my god again')
+    >>> def func(a, b):
+    >>>     print (a + b)
+    >>> print func(1, 2)
+    3
+    [2011-11-11 06:46] DEBUG: trace: oh my god again
+    """
+
+    @decorator.decorator
+    def new_deco(func, *args, **kwargs):
+        """empty."""
+        ret = func(*args, **kwargs)
+        _logger.debug(msg)
+        return ret
+    return new_deco
+
+def deprecatedModule(module):
+    """Display a deprecated msg for a module.
+
+    And inform to use `module` instead.
+
+    :param module: suggested module name
+    :type  module: str
+    """
+    stacks = traceback.extract_stack()
+    try:
+        filename, lineno, function_name, text = stacks[-3]
+    except IndexError:
+        return
+
+    filename = os.path.basename(filename)
+    old_module = os.path.splitext(os.path.basename(stacks[-2][0]))[0]
+    msg = "Go use '%s' instead cause module '%s' is deprecated in %s:%s."
+    msg = msg % (module, old_module, filename, lineno)
+    _logger.warning(msg)
+
+def deprecatedFunction(function):
+    """This decorator logs a deprecated msg on applied/decorated function.
+
+    And inform to use `function` instead.
+
+    :param function: suggested function name
+    :type  function: str
+    """
+    @decorator.decorator
+    def new_deco(func, *args, **kwargs):
+        """empty."""
+        ret = func(*args, **kwargs)
+
+        stacks = traceback.extract_stack()
+        try:
+            filename, lineno, function_name, text = stacks[-3]
+        except IndexError:
+            pass
+        else:
+            filename = os.path.basename(filename)
+            module = os.path.splitext(os.path.basename(stacks[-3][0]))[0]
+            msg = "Go use '%s' instead cause function '%s.%s()' is deprecated in %s:%s."
+            msg = msg % (function, module, func.__name__, filename, lineno)
+            _logger.warning(msg)
+        return ret
+
+    return new_deco
+
+def __genFuncMsg(func, *args, **kwargs):
+    """Generate function call msg.
+
+    :param func: a function
+    :type  func: function object
+    :param args: positional arguments
+    :type  args: tuple
+    :param kwargs: keyword arguments
+    :type  kwargs: dictionary
+    """
+
+    #return '"%s" with args %s and kwargs %s.' % (func.__name__, args, kwargs)
+    return '%s%s' % (func.__name__, args)
+
+def __genFuncAdvMsg(func, filename, lineno, *args, **kwargs):
+    """Generate function call msg.
+
+    :param func: a function
+    :type  func: function object
+    :param filename: filename
+    :type  filename: string
+    :param lineno: line number
+    :type  lineno: integer
+    :param args: positional arguments
+    :type  args: tuple
+    :param kwargs: keyword arguments
+    :type  kwargs: dictionary
+    """
+
+    #return '"%s" with args %s and kwargs %s in %s:%d.' %
+    #    (func.__name__, args, kwargs, filename, lineno)
+    return '%s%s in %s:%d' % (func.__name__, args, filename, lineno)
+
+def __genMethMsg(cls, func, *args, **kwargs):
+    """Generate method call msg.
+
+    :param cls: a class
+    :type  cls: class object
+    :param func: a function
+    :type  func: function object
+    :param args: positional arguments
+    :type  args: tuple
+    :param kwargs: keyword arguments
+    :type  kwargs: dictionary
+    """
+
+    name = '%s.%s' % (cls.__name__, func.__name__)
+    #return '"%s" with args %s and kwargs %s.' % (name, args, kwargs)
+    return '%s%s' % (name, args)
+
+def __genMethAdvMsg(cls, func, filename, lineno, *args, **kwargs):
+    """Generate method call msg.
+
+    :param cls: a class
+    :type  cls: class object
+    :param func: a function
+    :type  func: function object
+    :param filename: filename
+    :type  filename: string
+    :param lineno: line number
+    :type  lineno: integer
+    :param args: positional arguments
+    :type  args: tuple
+    :param kwargs: keyword arguments
+    :type  kwargs: dictionary
+    """
+
+    name = '%s.%s' % (cls.__name__, func.__name__)
+    #return '"%s" with args %s and kwargs %s in %s:%d.' % (name, args, kwargs, filename, lineno)
+    return '%s%s in %s:%d' % (name, args, filename, lineno)
+
+@decorator.decorator
+def logFunction(func, *args, **kwargs):
+    u"""This decorator logs a function call.
+
+    use logook with level=DEBUG
+
+    ex.
+    >>> @logFunction
+    >>> def foo(a, b):
+    >>>     return a+b
+    >>> print foo(100, 200)
+    [2011-11-14 06:00] DEBUG: trace: foo(100, 200)
+    300
+    """
+
+    extra = dict()
+    extra['func'] = func.__name__
+    extra['params'] = str(args)
+
+    _logger.debug(__genFuncMsg(func, *args, **kwargs), extra=extra)
+    return func(*args, **kwargs)
+
+@decorator.decorator
+def logFunctionAdv(func, *args, **kwargs):
+    u"""This decorator logs a function call with much more info.
+
+    use logook with level=DEBUG
+
+    ex.
+    >>> @logFunctionAdv
+    >>> def foo(a, b):
+    >>>     return a+b
+    >>> print foo(100, 200)
+    [2011-11-14 06:01] DEBUG: trace: foo(100, 200) in <ipython console>:1
+    300
+    """
+
+    # TODO. stack number depends on wrapping decorator(simpe=1, decorator=2)
+    #       the same to other functions with inspect.stack()
+    caller = inspect.getframeinfo(inspect.currentframe(2))
+    filename = caller[0]
+    lineno = caller[1]
+
+    extra = dict()
+    extra['func'] = func.__name__
+    extra['params'] = str(args)
+    extra['filename'] = filename
+    extra['lineno'] = lineno
+
+    _logger.debug(__genFuncAdvMsg(func, filename, lineno, *args, **kwargs), extra=extra)
+    return func(*args, **kwargs)
+
+@decorator.decorator
+def logMethod(func, self, *args, **kwargs):
+    u"""This decorator logs a method call.
+
+    use logook with level=DEBUG
+
+    ex.
+    >>> class A(object):
+    >>>     @logMethod
+    >>>     def foo(self, a, b=100):
+    >>>         return a+b
+    >>> a = A()
+    >>> a.foo(1, 2)
+    [2011-11-15 12:48] DEBUG: trace: A.foo(1, 2)
+    """
+
+    extra = dict()
+    extra['klass'] = self.__class__.__name__
+    extra['func'] = func.__name__
+    extra['params'] = str(args)
+
+    _logger.debug(__genMethMsg(self.__class__, func, *args, **kwargs), extra=extra)
+    return func(self, *args, **kwargs)
+
+@decorator.decorator
+def logMethodAdv(func, self, *args, **kwargs):
+    """This decorator logs a method call with much more info.
+
+    use logook with level=DEBUG
+
+    ex.
+    >>> class A(object):
+    >>>     @logMethodAdv
+    >>>     def foo(self, a, b=100):
+    >>>         return a+b
+    >>> a = A()
+    >>> a.foo(1, 2)
+    [2011-11-15 12:48] DEBUG: trace: A.foo(1, 2) in test.py:25
+    """
+
+    caller = inspect.getframeinfo(inspect.currentframe(2))
+    filename = caller[0]
+    lineno = caller[1]
+
+    extra = dict()
+    extra['klass'] = self.__class__.__name__
+    extra['func'] = func.__name__
+    extra['params'] = str(args)
+    extra['filename'] = filename
+    extra['lineno'] = lineno
+
+    _logger.debug(__genMethAdvMsg(self.__class__, func, filename, lineno, *args, **kwargs), extra=extra)
+    return func(self, *args, **kwargs)
+
+@decorator.decorator
+def logCall(func, *args, **kwargs):
+    u"""This decorator logs a method or function call.
+
+    Although this decorator is much general than `logMethod` and `logFunction`,
+    there is some limitation on this decorator to automatically differentiate
+    function and method.
+
+    According to http://bit.ly/rB9tPW
+
+    There seems no direct way to tell the difference such that we assume
+    the first argument to a method is named `self` and it is used as a hint.
+    If your case is not that simple, please just use the explicit way in
+    `logMethod` and `logFunction`.
+
+    use logook with level=DEBUG
+    """
+
+    def new_method(self, *args, **kwargs):
+        """empty."""
+        _logger.debug(__genMethMsg(self.__class__, func, *args, **kwargs))
+        return func(self, *args, **kwargs)
+
+    def new_func(*args, **kwargs):
+        """empty."""
+        _logger.debug(__genFuncMsg(func, *args, **kwargs))
+        return func(*args, **kwargs)
+
+    argspec = inspect.getargspec(func)
+    if argspec[0] and argspec[0][0] == 'self':
+        return new_method(*args, **kwargs)
+    else:
+        return new_func(*args, **kwargs)
+
+@decorator.decorator
+def logCallAdv(func, *args, **kwargs):
+    u"""This decorator logs a method or function call.
+
+    Although this decorator is much general than `logMethodAdv` and `logFunctionAdv`,
+    there is some limitation on this decorator to automatically differentiate
+    function and method.
+
+    According to http://bit.ly/rB9tPW
+
+    There seems no direct way to tell the difference such that we assume
+    the first argument to a method is named `self` and it is used as a hint.
+    If your case is not that simple, please just use the explicit way in
+    `logMethod` and `logFunction`.
+
+    use logook with level=DEBUG
+    """
+
+    def new_method(self, *args, **kwargs):
+        """empty."""
+        caller = inspect.getframeinfo(inspect.currentframe(2))
+        filename = caller[0]
+        lineno = caller[1]
+        _logger.debug(__genMethAdvMsg(self.__class__, func, filename, lineno, *args, **kwargs))
+        return func(self, *args, **kwargs)
+
+    def new_func(*args, **kwargs):
+        """empty."""
+        caller = inspect.getframeinfo(inspect.currentframe(2))
+        filename = caller[0]
+        lineno = caller[1]
+        _logger.debug(__genFuncAdvMsg(func, filename, lineno, *args, **kwargs))
+        return func(*args, **kwargs)
+
+    argspec = inspect.getargspec(func)
+    if argspec[0] and argspec[0][0] == 'self':
+        return new_method(*args, **kwargs)
+    else:
+        return new_func(*args, **kwargs)
+
+def logClassMethods(cls):
+    """This class decorator is to apply `logMethod` on all methods in a class.
+
+    The magic part is that this decorator will iterate all methods in
+    decorated class, not including the inherited methods, and apply a logger
+    on each of them.
+
+    The applied logger is the same to `logMethod`.
+
+    use logbook with lvel=Info
+
+        In the present implementation, decorators generated by decorator
+        can only be used on user-defined Python functions or methods, not
+        on generic callable objects, nor on built-in functions, due to
+        limitations of the inspect module in the standard library. Moreover,
+        notice that you can decorate a method, but only before if becomes a
+        bound or unbound method, i.e. inside the class.
+
+    ex.
+    >>> @logClassMethods
+    >>> class C(object):
+    >>>     def foo(self, a, b): pass
+    >>>     def bar(self): pass
+    >>> c = C()
+    >>> c.foo(1, 2)
+    [2011-11-15 12:52] DEBUG: trace: C.foo(1, 2)
+    >>> c.bar()
+    [2011-11-15 12:52] DEBUG: trace: C.bar()
+
+    Note: Class decorators starts after Python 2.6!
+    For Python 2.5 and earlier, use the following form
+
+    >>> class C(object):
+    >>>     def foo(self): pass
+    >>> C = logClassMethods(C)
+    """
+
+    # TODO. double applying logging decorators on methods!
+    #       the same to other class decorator of logging.
+    for attr in cls.__dict__:
+        obj = getattr(cls, attr)
+        if inspect.ismethod(obj):
+            # pylint: disable=E1120
+            setattr(cls, obj.__name__, logMethod(obj.im_func))
+            # pylint: enable=E1120
+
+    return cls
+
+def logClassMethodsAdv(cls):
+    """This class decorator is to apply `logMethodAdv` on all methods in a class.
+
+    A much info-rich version of `logClassMethods` by applying `logMethodAdv`.
+    For further docstring, please refer to `logClassMethods`.
+    """
+
+    for attr in cls.__dict__:
+        obj = getattr(cls, attr)
+        if inspect.ismethod(obj):
+            # pylint: disable=E1120
+            setattr(cls, obj.__name__, logMethodAdv(obj.im_func))
+            # pylint: enable=E1120
+
+    return cls
+
+def logAllMethods(cls):
+    """This class decorator is to apply `logMethod` on all methods in a class.
+
+    The magic part is that this decorator will iterate all methods in
+    decorated class, including the inherited methods, and apply a logger
+    on each of them.
+
+    The difference from `logClassMethods` is that this decorator takes
+    care of all methods, including inherited methods, while `logClassMethods`
+    just cares about the methods defined in the decorated class.
+
+    The applied logger is the same to `logMethod`.
+    use logbook with lvel=Info
+
+    ex.
+    >>> class D(object):
+    >>>     def foo(self, a=1, b=2): pass
+    >>> @logAllMethods
+    >>> class E(D):
+    >>>     def bar(self): pass
+    >>> e = E()
+    >>> e.bar()
+    [2011-11-15 12:52] DEBUG: trace: E.bar()
+    >>> e.foo()
+    [2011-11-15 12:52] DEBUG: trace: E.foo(1, 2)
+
+    Note. Class decorators starts after Python 2.6!
+    For Python 2.5 and earlier, use the following form
+
+    >>> class A(object):
+    >>>     def foo(self): pass
+    >>> A = logAllMethods(A)
+    """
+
+    for name, method in inspect.getmembers(cls, inspect.ismethod):
+        # pylint: disable=E1120
+        setattr(cls, name, logMethod(method.im_func))
+        # pylint: enable=E1120
+    return cls
+
+def logAllMethodsAdv(cls):
+    """This class decorator is to apply `logMethodAdv` on all methods in a class.
+
+    A much info version of `logAllMethods` by applying `logMethodAdv`.
+    For further docstring, please refer to `logAllMethods`.
+    """
+
+    for name, method in inspect.getmembers(cls, inspect.ismethod):
+        # pylint: disable=E1120
+        setattr(cls, name, logMethodAdv(method.im_func))
+        # pylint: enable=E1120
+    return cls
+
+def __init():
+    """Secret initializing function.
+    """
+
+    global _logger, _stdout_handler, _file_handler, _null_handler
+
+    # prevent duplicated-entry
+    if _logger:
+        return
+
+    # Set timezone: local
+    logbook.set_datetime_format("local")
+
+    # initialized trace logger
+    _logger = logbook.Logger('trace')
+    #_logger = TraceLogger('trace')
+
+    # make sure we never bubble up to the stderr handler
+    # if we run out of setup handling
+    _null_handler = NullHandler()
+    _null_handler.push_application()
+
+    # add a stdout handler
+    # this handler is used to replace the default stderr one.
+    _stdout_handler = StdoutHandler(level=WARNING)
+    _stdout_handler.push_application()
+
+    # add a rotating file handler
+    # cause we would like to save all message into a file if enabled.
+    prefix = 'dglog_%s_' % (time.strftime('%Y%m%d'))
+    (fd, fn) = tempfile.mkstemp(suffix='.log', prefix=prefix)
+    os.close(fd)
+    os.remove(fn)   # Note. we just keep the filename instead of the created file
+    FileHandlerAdv = __mixes_in([PassThroughHandlerMixin], force=True)(RotatingFileHandler)
+
+    _file_handler = FileHandlerAdv(fn,
+                                   delay=True,
+                                   max_size=100 * 1024 * 1024,
+                                   backup_count=100,
+                                   bubble=True)
+    _file_handler.push_application()
+    _file_handler.passThrough = True
+
+    # register a destructor for the module
+    atexit.register(__final)
+
+def __final():
+    """Module-wise destructor.
+    """
+
+    global _logger, _stdout_handler, _file_handler, _null_handler
+
+    _file_handler.pop_application()
+    del _file_handler
+    _stdout_handler.pop_application()
+    del _stdout_handler
+    _null_handler.pop_application()
+    del _null_handler
+
+def __setHandlerLevel(handler, level):
+    """Set a handler's logging level.
+
+    :param level: logging level
+    :type  level: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL
+    """
+
+    handler.level = level
+
+def setStdoutLevel(level):
+    """Set stdout handler's logging level.
+
+    :param level: logging level
+    :type  level: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL
+    """
+
+    __setHandlerLevel(_stdout_handler, level)
+
+def setFileLevel(level):
+    """Set file handler's logging level.
+
+    :param level: logging level
+    :type  level: DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL
+    """
+
+    __setHandlerLevel(_file_handler, level)
+
+def setFilename(filename):
+    """(Re)Set filename for logging.
+
+    :param filename: a filename for file logging
+    :type  filename: string
+    """
+
+    old = __setStatus(_file_handler, False)
+    _file_handler._filename = filename
+    _file_handler.passThrough = old
+
+def __setStatus(handler, status):
+    """Set a handler's status (enabled or disabled).
+
+    status = enable or not
+    """
+
+    old = handler.passThrough
+    handler.passThrough = not status
+    if not status:
+        handler.close()
+    return old
+
+enableFile = lambda: __setStatus(_file_handler, True)
+enableFile.__doc__ = "Enable file logging."
+disableFile = lambda: __setStatus(_file_handler, False)
+disableFile.__doc__ = "Disable file logging."
+toggleFile = lambda: __setStatus(_file_handler, _file_handler.passThrough)
+toggleFile.__doc__ = "Toggle file logging."
+
+
+###############################################################################
+# Classes
+###############################################################################
+
+class TraceLogger(logbook.Logger):
+    """Trace Logger.
+    """
+
+    def process_record(self, record):
+        logbook.Logger.process_record(self, record)
+        print record.level_name
+
+
+# pylint: disable=R0903
+class PassThroughHandlerMixin(object):
+    """This mixin provides a `passThrough` flag for handlers.
+
+    If `passThrough` is True, the mixined handler does nothing
+    and pass the logging record through to the next handler in the stack.
+    """
+
+    passThrough = False
+
+    def should_handle(self, record):
+        """Returns `True` if this handler wants to handle the record.
+
+        The default implementation checks the level.
+        """
+
+        if self.passThrough:
+            return False
+        # TODO. we assume there is a self.level!
+        return record.level >= self.level
+    # pylint: enable=R0903
+
+class StdoutHandler(StreamHandler):
+    """A handler that writes to what is currently at stdout.
+
+    At the first
+    glace this appears to just be a :class:`StreamHandler` with the stream
+    set to :data:`sys.stdout` but there is a difference: if the handler is
+    created globally and :data:`sys.stdout` changes later, this handler will
+    point to the current `stdout`, whereas a stream handler would still
+    point to the old one.
+
+    Note: it is borrowed from logbook.handlers.StderrHandler
+    """
+
+    # pylint: disable=W0622
+    def __init__(self, level=NOTSET,
+            format_string=TRACER_FORMAT_STRING,
+            filter=None,
+            bubble=False):
+        StreamHandler.__init__(self, _missing, level, format_string,
+                               None, filter, bubble)
+        # pylint: enable=W0622
+
+    # pylint: disable=E0202
+    @property
+    def stream(self):
+        return sys.stdout
+        # pylint: enable=E0202
+
+#@__mixes_in([PassThroughHandlerMixin], force=True)
+StdoutHandler = __mixes_in([PassThroughHandlerMixin], force=True)(StdoutHandler)
+
+
+###############################################################################
+# Main
+###############################################################################
+
+__init()
+

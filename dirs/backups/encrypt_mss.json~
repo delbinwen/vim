@@ -1,0 +1,21 @@
+{
+	"source_url" : "s3://videopass-theater/mezzanine/INTERNET_tid_9900014_m.mp4",
+	"isource_audio_urls" : [
+		"s3://videopass-theater/intermediate/p0_INTERNET_tid_9900014_m_audio.mp4",
+		"s3://videopass-theater/intermediate/p1_INTERNET_tid_9900014_m_audio.mp4",
+		"s3://videopass-theater/intermediate/p2_INTERNET_tid_9900014_m_audio.mp4",
+		"s3://videopass-theater/intermediate/p3_INTERNET_tid_9900014_m_audio.mp4",
+		"s3://videopass-theater/intermediate/p4_INTERNET_tid_9900014_m_audio.mp4"
+		],
+	"isource_video_urls" : [
+		"s3://videopass-theater/intermediate/p0_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p1_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p2_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p3_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p4_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p5_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p6_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p7_INTERNET_tid_9900014_m_video.mp4",
+		"s3://videopass-theater/intermediate/p8_INTERNET_tid_9900014_m_video.mp4"
+		]
+}

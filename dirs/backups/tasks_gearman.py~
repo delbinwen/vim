@@ -1,0 +1,639 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 drakeguan <drakeguan@kkbox.com>
+
+
+# Built-in modules
+import os
+import json
+import sys
+
+# Additional modules
+import decorator
+import invoke
+import path
+
+# local modules
+from emilia import common
+try:
+    from emilia import config
+except ImportError:
+    from emilia import config_default as config
+from emilia import core
+from emilia import dash
+from emilia import dgdecorator
+from emilia import dglog
+from emilia import drm
+from emilia import hls
+from emilia.ingestion_report import ingestion_report
+from emilia import media
+from emilia import s3
+
+
+dglog.setStdoutLevel(dglog.INFO)
+dglog.setFilename(config.LOG_FILENAME)
+dglog.enableFile()
+
+
+@decorator.decorator
+def io_pipes(func, *args, **kwargs):
+    '''Decorator to automate handling of input/output JSON for Gearman.'''
+    dglog.setStdoutLevel(dglog.CRITICAL)
+
+    input_json = json.loads(sys.stdin.read())
+    output_json = {'status': True}
+    result = func(in_=input_json, out_=output_json)
+    print json.dumps(output_json)
+    return result
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def upload(in_=None, out_=None):
+    '''upload stage.
+
+    Do nothing but just fire an ingestion report currently.
+    '''
+    status = True
+    payload = {'movie_url': in_['source_url']}
+    desc = ''
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def source_inspection(in_=None, out_=None):
+    """source_inspection stage.
+
+    :stdin:
+        {
+            "stage" : "source_inspection",
+            "source_url" : URL,
+        }
+    :stdout:
+        {
+            "status" : BOOL
+        }
+    """
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2):
+        filepath = s3.download_big_file(in_['source_url'])
+        out_['status'] = media.source_inspection(filepath)
+
+    # for content ingestion (report) API
+    status = out_['status']
+    desc = ''
+    payload = {'movie': {}}
+    return status, desc, payload
+
+
+@invoke.task
+def transcode_video_s3(s3_key, outfile=None, profile_id=0, tempdir=None):
+    '''Transcode a media file (on S3) into a video-only isource with specific profile.
+
+    :param str s3_key: input media file's s3 key
+    :param str outfile: output filename if available or automatically determined
+    :param int profile_id: 0-13
+    :return: output filename
+    :rtype: path.path()
+    '''
+    # TODO: the generated temp_dir is not deleted.
+    with common.tempdir_chdir(tempdir):
+        infile = s3.download_big_file(s3_key)
+        outfile = core.transcode_video(infile, outfile, profile_id)
+        infile.unlink()
+    return outfile
+
+
+@invoke.task
+def transcode_audio_s3(s3_key, outfile=None, profile_id=0, tempdir=None):
+    '''Transcode a media file (on S3) into a audio-only isource with specific profile.
+
+    :param str s3_key: input media file's s3 key
+    :param str outfile: output filename if available or automatically determined
+    :param int profile_id: 0-4
+    :return: output filename
+    :rtype: path.path()
+    '''
+    # TODO: the generated temp_dir is not deleted.
+    with common.tempdir_chdir(tempdir):
+        infile = s3.download_big_file(s3_key)
+        outfile = core.transcode_audio(infile, outfile, profile_id)
+        infile.unlink()
+    return outfile
+
+
+@invoke.task
+@io_pipes
+@dgdecorator.logPerformance
+def transcode(in_=None, out_=None):
+    '''transcode stage.
+
+    :stdin:
+        {
+            "source_url" : S3_URL,
+            "stream" : "video" | "audio",
+            "profile_id" : INTEGER (audio: 0-4, video: 0-13)
+        }
+    :stdout:
+        {
+            "status" : BOOL,
+            "isource_url" : S3_URL
+        }
+    '''
+    source_url = path.path(in_['source_url'])
+    outfile = ''
+    if in_['stream'] == 'video':
+        outfile = transcode_video_s3(source_url, profile_id=in_['profile_id'],
+                                     tempdir=config.TMP_DIR1)
+    elif in_['stream'] == 'audio':
+        outfile = transcode_audio_s3(source_url, profile_id=in_['profile_id'],
+                                     tempdir=config.TMP_DIR1)
+    else:
+        out_['status'] = False
+    # upload to s3
+    try:
+        s3_bucket = config.S3_BUCKET_ISOURCE
+        s3_key = config.S3_ISOURCE_PREFIX + outfile.basename()
+        s3.upload_big_file(outfile, s3_bucket, s3_key)
+        out_['isource_url'] = s3.full_key(s3_bucket, s3_key)
+        outfile.unlink()
+    except AttributeError:
+        pass
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def transcode_status(in_=None, out_=None):
+    '''transcode_status stage.
+
+    :stdin:
+        {
+            "stage" : "transcode",
+            "source_url" : S3_URL,
+            "isource_audio_urls": [S3_URL, S3_URL, ...],
+            "isource_video_urls": [S3_URL, S3_URL, ...]
+        }
+    :stdout:
+        {
+            "status" : BOOL,
+        }
+    '''
+    status = out_['status']
+    desc = ''
+    isource_urls = in_['isource_audio_urls'] + in_['isource_video_urls']
+    payload = {'isource_urls': isource_urls}
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def encrypt_dash(in_=None, out_=None):
+    '''encrypt_dash stage.
+
+    :stdin:
+        {
+            "stage" : "encrypt_dash",
+            "source_url": S3_URL,
+            "isource_audio_urls": [S3_URL, S3_URL, ...], // 0-4
+            "isource_video_urls": [S3_URL, S3_URL, ...], // 0-8
+        }
+
+    :stdout:
+        {
+            "status": BOOL,
+            "encrypted_isource_audio_urls": [S3_URL, S3_URL, ...], // 0-4
+            "encrypted_isource_video_urls": [S3_URL, S3_URL, ...], // 0-8
+        }
+    '''
+    title_id = common.get_title_id(in_['source_url'])
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2):
+        # download source
+        audio_filepaths = s3.download_big_files(in_['isource_audio_urls'])
+        video_filepaths = s3.download_big_files(in_['isource_video_urls'])
+
+        (enc_audio_filepaths, enc_video_filepaths) = core.encrypt_dash_mss(
+            title_id, audio_filepaths, video_filepaths)
+
+        # Upload encrypted media files to S3.
+        out_['encrypted_isource_audio_urls'] = []
+        out_['encrypted_isource_video_urls'] = []
+        s3_bucket = config.S3_BUCKET_ENC_ISOURCE
+        s3_key_prefix = config.S3_ENC_ISOURCE_PREFIX + config.S3_DASH_PREFIX
+
+        for f in enc_audio_filepaths:
+            s3_key = os.path.join(s3_key_prefix, path.path(f).basename())
+            s3.upload_big_file(f, s3_bucket, s3_key)
+            out_['encrypted_isource_audio_urls'].append(s3.full_key(s3_bucket,
+                                                                    s3_key))
+
+        for f in enc_video_filepaths:
+            s3_key = os.path.join(s3_key_prefix, path.path(f).basename())
+            s3.upload_big_file(f, s3_bucket, s3_key)
+            out_['encrypted_isource_video_urls'].append(s3.full_key(s3_bucket,
+                                                                    s3_key))
+
+    # report
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'dash'}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def encrypt_hls(in_=None, out_=None):
+    '''encrypt_hls stage.
+
+    :stdin:
+        {
+            "stage" : "encrypt_hls",
+            "source_url": S3_URL,
+            "hls_url": S3_URL,
+        }
+
+    :stdout:
+        {
+            "status": BOOL,
+            "encrypted_hls_url": S3_URL,
+        }
+    '''
+    title_id = common.get_title_id(in_['source_url'])
+    (key_id, key) = drm.get_key_pair_from_title_id(title_id, 'hd')
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2):
+        hls_url = in_['hls_url']
+
+        # DOWNLOAD UNPROTECTED HLS PACKAGE FROM S3
+        # Download master index file.
+        local_hls_url = path.path.getcwd().joinpath(path.path(hls_url).name)
+        s3.download_big_file(hls_url)
+        # Download alternative index files and segment files.
+        local_hls_dir = path.path(local_hls_url.replace('.m3u8', '.hls'))
+        s3.download_dir_from_s3(path.path(hls_url.replace('.m3u8', '.hls/')),
+                                local_hls_dir)
+
+        # APPLY DRM
+        enc_hls_url = drm.apply_drm_hls(local_hls_url, key_id, key)
+
+        # UPLOAD PROTECTED HLS PACKAGE TO S3
+        s3_bucket = config.S3_BUCKET_STAGE
+        s3_key = (config.S3_STAGE_PREFIX +
+                  config.S3_HLS_PREFIX +
+                  path.path(enc_hls_url).basename())
+
+        hls.upload_hls_to_s3(enc_hls_url, s3_bucket, s3_key)
+
+        out_['encrypted_hls_url'] = s3.full_key(s3_bucket, s3_key)
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'hls'}
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def encrypt_mss(in_=None, out_=None):
+    '''encrypt_mss stage.
+
+    :stdin:
+        {
+            "stage" : "encrypt_mss",
+            "source_url": S3_URL,
+            "isource_audio_urls": [S3_URL, S3_URL, ...], // 2-4
+            "isource_video_urls": [S3_URL, S3_URL, ...], // 9-13
+        }
+    :stdout:
+        {
+            "status": BOOL,
+            "encrypted_isource_audio_urls": [S3_URL, S3_URL, ...], // 2-4
+            "encrypted_isource_video_urls": [S3_URL, S3_URL, ...], // 9-13
+        }
+    '''
+    title_id = common.get_title_id(in_['source_url'])
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2):
+        # download source
+        audio_filepaths = s3.download_big_files(in_['isource_audio_urls'])
+        video_filepaths = s3.download_big_files(in_['isource_video_urls'])
+
+        (enc_audio_filepaths, enc_video_filepaths) = core.encrypt_dash_mss(
+            title_id, audio_filepaths, video_filepaths)
+
+        # Upload encrypted media files to S3.
+        out_['encrypted_isource_audio_urls'] = []
+        out_['encrypted_isource_video_urls'] = []
+        s3_bucket = config.S3_BUCKET_ENC_ISOURCE
+        s3_key_prefix = config.S3_ENC_ISOURCE_PREFIX + config.S3_MSS_PREFIX
+
+        for f in enc_audio_filepaths:
+            s3_key = os.path.join(s3_key_prefix, path.path(f).basename())
+            s3.upload_big_file(f, s3_bucket, s3_key)
+            out_['encrypted_isource_audio_urls'].append(s3.full_key(s3_bucket,
+                                                                    s3_key))
+        for f in enc_video_filepaths:
+            s3_key = os.path.join(s3_key_prefix, path.path(f).basename())
+            s3.upload_big_file(f, s3_bucket, s3_key)
+            out_['encrypted_isource_video_urls'].append(s3.full_key(s3_bucket,
+                                                                    s3_key))
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'mss'}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def adaptive_dash(in_=None, out_=None):
+    '''Generate DASH package with input from stdin.
+
+    :stdin:
+        {
+            "stage" : "adaptive_dash",
+            "source_url" : S3_URL,
+            "encrypted_isource_audio_urls": [S3_URL, S3_URL, ...], // 0-4
+            "encrypted_isource_video_urls": [S3_URL, S3_URL, ...], // 0-8
+        }
+    :stdout:
+        {
+            "status": BOOL,
+            "dash_url": S3_URL,
+        }
+    '''
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2):
+        # download source
+        audio_filepaths = s3.download_big_files(in_['encrypted_isource_audio_urls'])
+        video_filepaths = s3.download_big_files(in_['encrypted_isource_video_urls'])
+
+        source_url = path.path(in_['source_url'])
+        mpd_filepath = path.path.getcwd().joinpath(source_url.namebase + '.mpd')
+        mpd_filepath = core.adaptive_dash_localfile(audio_filepaths,
+                                                    video_filepaths,
+                                                    mpd_filepath)
+        # TODO: in-consistent to upload_hls_to_s3()
+        s3_bucket = config.S3_BUCKET_PACKAGE
+        s3_key_prefix = config.S3_STAGE_PREFIX + config.S3_DASH_PREFIX
+        dash.upload_mpd_to_s3(mpd_filepath, s3_bucket, s3_key_prefix)
+        out_['dash_url'] = s3.full_key(s3_bucket,
+                                       s3_key_prefix,
+                                       mpd_filepath.basename())
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'dash'}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def adaptive_hls(in_=None, out_=None):
+    '''Generate HLS package with input from stdin.
+
+    :stdin:
+        {
+            "stage" : "adaptive_hls",
+            "source_url" : URL,
+            "isource_audio_urls": [URL, URL, ...],
+            "isource_video_urls": [URL, URL, ...]
+        }
+    :stdout:
+        {
+            "status": BOOL,
+            "hls_url": URL,
+        }
+    '''
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2):
+        # download source
+        audio_filepaths = s3.download_big_files(in_['isource_audio_urls'])
+        video_filepaths = s3.download_big_files(in_['isource_video_urls'])
+
+        source_url = path.path(in_['source_url'])
+        m3u8_filepath = path.path.getcwd().joinpath(source_url.namebase+'.m3u8')
+        m3u8_filepath = core.adaptive_hls_localfile(audio_filepaths,
+                                               video_filepaths,
+                                               m3u8_filepath)
+        # upload to s3 temp folder because local disk is small.
+        s3_bucket = config.S3_BUCKET_PACKAGE
+        s3_key = (config.S3_ADAPTIVE_PREFIX +
+                  config.S3_HLS_PREFIX +
+                  m3u8_filepath.basename())
+        hls.upload_hls_to_s3(m3u8_filepath, s3_bucket, s3_key)
+        out_['hls_url'] = s3.full_key(s3_bucket, s3_key)
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'hls'}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def adaptive_mss(in_=None, out_=None):
+    '''Generate MSS package with input from stdin.
+
+    :stdin:
+        {
+            "stage" : "adaptive_mss",
+            "source_url" : URL,
+            "encrypted_isource_audio_urls": [URL, URL, ...],
+            "encrypted_isource_video_urls": [URL, URL, ...]
+        }
+    :stdout:
+        {
+            "status": BOOL,
+            "mss_url": URL
+        }
+    '''
+    # TODO: put all the executable filepath(e.g. ffmpeg, MP4Box, mpd2ss.php) to
+    # config.py
+    with common.tempdir_chdir_rmtree(config.TMP_DIR2) as (curr_folder, _):
+        # download source
+        audio_filepaths = s3.download_big_files(in_['encrypted_isource_audio_urls'])
+        video_filepaths = s3.download_big_files(in_['encrypted_isource_video_urls'])
+
+        # generate DASH
+        source_url = path.path(in_['source_url'])
+        mpd_tmp_root = path.path.getcwd().joinpath('tmp')
+        mpd_tmp_filepath = mpd_tmp_root.joinpath(source_url.namebase+'.mpd')
+        mpd_tmp_filepath = core.adaptive_dash_localfile(audio_filepaths,
+                                                        video_filepaths,
+                                                        mpd_tmp_filepath)
+        # convert to MSS
+        mpd2ss_folder = os.path.join(curr_folder, config.MPD2MSS_FOLDER)
+        manifest_filepath = path.path.getcwd().joinpath(source_url.namebase)
+        manifest_filepath = core.adaptive_mss_localfile(manifest_filepath,
+                                                   mpd_tmp_filepath,
+                                                   mpd2ss_folder)
+        # remove un-used dash file to prevent S3 uploading
+        mpd_tmp_root.rmtree_p()
+
+        # upload to s3 temp folder because local disk is small.
+        s3_bucket = config.S3_BUCKET_PACKAGE
+        s3_key_prefix = config.S3_STAGE_PREFIX + config.S3_MSS_PREFIX
+        s3.upload_dir(manifest_filepath, s3_bucket,
+                      s3_key_prefix+source_url.namebase)
+
+        out_['mss_url'] = s3.full_key(s3_bucket,
+                                      s3_key_prefix,
+                                      source_url.namebase)
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'mss'}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def deploy_dash(in_=None, out_=None):
+    '''Deploy DASH package (in ~/tmp/).
+
+    stdin:
+        {
+            "stage" : "deploy_dash",
+            "source_url": S3_URL,
+            "dash_url": S3_URL,
+        }
+    stdout:
+        {
+            "status": BOOL,
+            "dash_url": HTTP_URL,
+        }
+    '''
+    with common.tempdir_chdir_rmtree(config.TMP_DIR1):
+        if in_['dash_url']:
+            mpd_url = in_['dash_url']
+            media_url = in_['dash_url'][:-4]  # remove .mpd
+            try:
+                s3_bucket = config.S3_BUCKET_RELEASE
+                s3_key_prefix = config.S3_RELEASE_PREFIX + config.S3_DASH_PREFIX
+                deployed_mpd_url = s3.full_key(s3_bucket,
+                                               s3_key_prefix,
+                                               path.path(mpd_url).basename())
+                deployed_media_url = s3.full_key(s3_bucket,
+                                                 s3_key_prefix,
+                                                 path.path(media_url).basename())
+                s3.move_file_within_s3(mpd_url, deployed_mpd_url)
+                s3.move_dir_within_s3(media_url, deployed_media_url)
+                out_['dash_url'] = s3.public_url(deployed_mpd_url)
+            except ValueError:
+                pass
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'dash', 'movie': s3.public_url(deployed_mpd_url)}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def deploy_hls(in_=None, out_=None):
+    '''Deploy HLS package (in ~/tmp/).
+
+    stdin:
+        {
+            "stage" : "deploy_hls",
+            "source_url": S3_URL,
+            "encrypted_hls_url": S3_URL,
+        }
+    stdout:
+        {
+            "status": BOOL,
+            "hls_url": HTTP_URL,
+        }
+    '''
+    with common.tempdir_chdir_rmtree(config.TMP_DIR1):
+        if in_['encrypted_hls_url']:
+            m3u8_url = in_['encrypted_hls_url']
+            media_url = in_['encrypted_hls_url'][:-5] + '.hls'  # remove .m3u8
+            try:
+                s3_bucket = config.S3_BUCKET_RELEASE
+                s3_key_prefix = config.S3_RELEASE_PREFIX + config.S3_HLS_PREFIX
+                deployed_m3u8_url = s3.full_key(s3_bucket,
+                                                s3_key_prefix,
+                                                path.path(m3u8_url).basename())
+                deployed_media_url = s3.full_key(s3_bucket, s3_key_prefix,
+                                                 path.path(media_url).basename())
+                s3.move_file_within_s3(m3u8_url, deployed_m3u8_url)
+                s3.move_dir_within_s3(media_url, deployed_media_url)
+                out_['hls_url'] = s3.public_url(deployed_m3u8_url)
+            except ValueError:
+                pass
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'hls', 'movie': s3.public_url(deployed_m3u8_url)}
+
+    return status, desc, payload
+
+
+@invoke.task
+@io_pipes
+@ingestion_report
+@dgdecorator.logPerformance
+def deploy_mss(in_=None, out_=None):
+    '''Deploy MSS package (in ~/tmp/).
+
+    stdin:
+        {
+            "stage" : "deploy_mss",
+            "source_url": S3_URL,
+            "mss_url": S3_URL
+        }
+    stdout:
+        {
+            "status": BOOL,
+            "mss_url": HTTP_URL
+        }
+    '''
+    with common.tempdir_chdir_rmtree(config.TMP_DIR1):
+        if in_['mss_url']:
+            media_url = in_['mss_url']
+            try:
+                s3_bucket = config.S3_BUCKET_RELEASE
+                s3_key_prefix = config.S3_RELEASE_PREFIX + config.S3_MSS_PREFIX
+                namebase = path.path(media_url).namebase
+                deployed_media_url = s3.full_key(s3_bucket,
+                                                 s3_key_prefix+namebase)
+                s3.move_dir_within_s3(media_url, deployed_media_url)
+                public_mss_url = 'http://{s3_bucket}.s3.amazonaws.com/{s3_key}'
+                out_['mss_url'] = public_mss_url.format(
+                    s3_bucket=s3_bucket, s3_key=s3_key_prefix+namebase)
+            except ValueError:
+                pass
+
+    status = out_['status']
+    desc = ''
+    payload = {'protocol': 'mss',
+               'movie': public_mss_url}
+
+    return status, desc, payload

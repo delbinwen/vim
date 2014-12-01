@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+# Built-in modules
+import json
+from subprocess import Popen, PIPE, STDOUT
+import uuid
+
+# Additional modules
+import boto.swf.layer2
+from flowy.proxy import SWFActivityProxy as ActivityProxy
+from flowy.scanner import swf_activity as activity
+from flowy.scanner import swf_workflow as workflow
+from flowy.tasks import SWFActivity as Activity
+from flowy.tasks import SWFWorkflow as Workflow
+
+# local modules
+from emilia import common
+try:
+    from emilia import config
+except ImportError:
+    from emilia import config_default as config
+
+
+@workflow(version='1.0', task_list='default')
+class TranscodeWorkflow(Workflow):
+    source_inspection = ActivityProxy(name='SourceInspection', version='1.0')
+
+    def run(self, source_url):
+        return self.source_inspection(source_url)
+
+
+@activity(version='1.0')
+class SourceInspection(Activity):
+
+    cmd = '/Users/wesleywen/Work/Videopass/videopass-encoding/scripts/%s' % 'source_inspection.sh'
+    p = Popen([cmd], stdout=PIPE, stdin=PIPE, stderr=STDOUT)
+    result = p.communicate(input=input)[0]
+
+    return result

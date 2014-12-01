@@ -1,0 +1,122 @@
+<?php
+
+class MssWorkflow
+{
+    protected $_client = null;
+
+    public function run($job, &$log)
+    {
+        $json = $job->workload();
+        $urls = json_decode($json);
+
+        $sourceURL = $urls->source_url;
+        $log[] = "BEGIN MssWorkflow src: $sourceURL";
+        $flowBegin = time();
+        $isourceVideoURLs = $urls->isource_video_urls;
+        $isourceAudioURLs = $urls->isource_audio_urls;
+
+        $isourceVideoURLs = array_slice($isourceVideoURLs, 9, 5);
+        $isourceAudioURLs = array_slice($isourceAudioURLs, 2, 3);
+
+        $encryptBegin = time();
+        $log[] = "BEGIN EncryptMss src: $sourceURL";
+        $encryptedIsourceURLs = $this->_encrypt($sourceURL, $isourceVideoURLs, $isourceAudioURLs);
+        $encryptEnd = time() - $encryptBegin;
+        $log[] = "END EncryptMss elapsed: $encryptEnd src: $sourceURL";
+
+        if (!$encryptedIsourceURLs) {
+            return json_encode(array('error' => "Encrypt Mss $sourceURL failed."));
+        }
+
+        $encryptedIsourceVideoURLs = $encryptedIsourceURLs->encrypted_isource_video_urls;
+        $encryptedIsourceAudioURLs = $encryptedIsourceURLs->encrypted_isource_audio_urls;
+
+        $adaptiveBegin = time();
+        $log[] = "BEGIN AdaptiveMss src: $sourceURL";
+        $mssURL = $this->_adaptive($sourceURL, $encryptedIsourceVideoURLs, $encryptedIsourceAudioURLs);
+        $adaptiveEnd = time() - $adaptiveBegin;
+        $log[] = "END AdaptiveMss elapsed: $adaptiveEnd src: $sourceURL";
+
+        if (!$mssURL) {
+            return json_encode(array('error' => "Adaptive Mss $sourceURL failed."));
+        }
+
+        $deployBegin = time();
+        $log[] = "BEGIN DeployMss src: $sourceURL";
+        $httpURL = $this->_deploy($sourceURL, $mssURL);
+        $deployEnd = time() - $deployBegin;
+        $log[] = "END DeployMss elapsed: $deployEnd src: $sourceURL";
+
+        $log[] = "MssWorkflow::httpURL: $httpURL";
+        if (!$httpURL) {
+            return json_encode(array('error' => "Deploy Mss $sourceURL failed."));
+        }
+
+        $flowEnd = time() - $flowBegin;
+        $log[] = "END MssWorkflow elapsed: $flowEnd src: $sourceURL";
+        return json_encode(array('status' => "Deploy Mss $sourceURL to $httpURL success."));
+    }
+
+    protected function _encrypt($sourceURL, $isourceVideoURLs, $isourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'encrypt_mss',
+            'source_url' => $sourceURL,
+            'isource_video_urls' => $isourceVideoURLs,
+            'isource_audio_urls' => $isourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('EncryptMssTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result : false;
+    }
+
+    protected function _adaptive($sourceURL, $encryptedIsourceVideoURLs, $encryptedIsourceAudioURLs)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'adaptive_mss',
+            'source_url' => $sourceURL,
+            'encrypted_isource_video_urls' => $encryptedIsourceVideoURLs,
+            'encrypted_isource_audio_urls' => $encryptedIsourceAudioURLs,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('AdaptiveMssTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->mss_url : false;
+    }
+
+    protected function _deploy($sourceURL, $mssURL)
+    {
+        $client = $this->_getClient();
+
+        $urls = array(
+            'stage' => 'deploy_mss',
+            'source_url' => $sourceURL,
+            'mss_url' => $mssURL,
+        );
+
+        $workload = json_encode($urls);
+        $data = $client->doNormal('DeployMssTask', $workload);
+        $result = json_decode($data);
+
+        return $result->status ? $result->mss_url: false;
+    }
+
+    protected function _getClient()
+    {
+        if (null === $this->_client) {
+            $client = new GearmanClient();
+            $client->addServer('gearman.videopass.kkbox-test.com');
+            $this->_client = $client;
+        }
+        return $this->_client;
+    }
+}
