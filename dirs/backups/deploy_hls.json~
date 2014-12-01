@@ -1,0 +1,4 @@
+{
+    "source_url": "s3://videopass-theater/mezzanine/INTERNET_tid_9900014_m.mp4",
+    "hls_url": "s3://videopass-theater/3hls/INTERNET_tid_9900014_m.m3u8"
+}

@@ -1,0 +1,11 @@
+#PATH_OPENSSL = '/usr/local/Cellar/openssl/1.0.1j/bin/openssl'
+
+# override S3 prefix variables
+S3_ISOURCE_PREFIX = 'beta.2/isources/'
+S3_ENC_ISOURCE_PREFIX = 'beta.2/encrypted_isources/'
+S3_ADAPTIVE_PREFIX = 'beta.2/adaptive/'
+S3_STAGE_PREFIX = 'beta.2/stage/'
+S3_RELEASE_PREFIX = 'beta.2/release/'
+
+# override ingestion report API
+INGESTION_REPORT = False

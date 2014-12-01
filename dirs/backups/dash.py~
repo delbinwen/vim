@@ -1,0 +1,392 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 Shuen-Huei (Drake) Guan <drakeguan@kkbox.com>
+#
+
+
+# Built-in modules
+import base64
+import os
+import shutil
+
+# Additional modules
+from bs4 import BeautifulSoup
+from invoke import run
+from path import path
+import requests
+
+# local modules
+from common import named_tempfile
+try:
+    import config
+except ImportError:
+    import config_default as config
+import dglog
+import media
+import s3
+import template
+
+
+
+def generate_dash(audio_filepaths=None, video_filepaths=None, movie_filepaths=None):
+    def gen_audio_arg(filepaths):
+        return ' '.join(['"'+f+'#audio"' for f in filepaths])
+
+    def gen_video_arg(filepaths):
+        return ' '.join(['"'+f+'#video"' for f in filepaths])
+
+    cmd = template.MP4BOX_DASH_TML.format(
+            mpd_filename = config.MPD_TMP_FILENAME,
+            seg_length = config.SEG_LENGTH,
+            frag_length = config.FRAG_LENGTH
+            )
+    if audio_filepaths:
+        cmd = cmd + ' ' + gen_audio_arg(audio_filepaths)
+    if video_filepaths:
+        cmd = cmd + ' ' + gen_video_arg(video_filepaths)
+    if movie_filepaths:
+        cmd = cmd + ' ' + ' '.join(movie_filepaths)
+
+    dglog.info('CMD for DASH: '+cmd)
+    run(cmd)
+
+    fix_mpd(config.MPD_TMP_FILENAME, config.MPD_FILENAME)
+    os.unlink(config.MPD_TMP_FILENAME)
+    return path(config.MPD_FILENAME)
+
+
+def generate_dash_from_list(list_filename):
+    try:
+        movie_filepaths = path(list_filename).lines(retain=False)
+    except IOError:
+        return False
+    return generate_dash(movie_filepaths=movie_filepaths)
+
+
+def fix_mpd(old_mpd_filename, new_mpd_filename, title=None):
+    '''Fix GPAC-generated .mpd file.
+
+    * updating (or fixing) the .mpd file. MP4Box would separate Representations
+    according to their content info, for video, it's DAR. And because 426x240
+    and 854x480 is not 16:9, those Representations would be separated into
+    another AdaptationSet! That's annoying for our poor DASH player right now.
+    * updating Title.
+    * setting Video AdaptationSet's par to 16:9.
+    * updating Video Representation's sar to 1:1.
+    * setting Representation's id.
+    '''
+
+    soup = BeautifulSoup(open(old_mpd_filename), 'xml')
+    period = soup.find_all('Period')[0] # NOTE: it's case sensitive.
+    adapts = soup.find_all('AdaptationSet')
+    reprs = soup.find_all('Representation')
+    # video_reprs = filter(lambda result: result.attrs['mimeType'] == 'video/mp4', reprs)
+    # audio_reprs = filter(lambda result: result.attrs['mimeType'] == 'audio/mp4', reprs)
+    video_reprs = [rep for rep in reprs if rep.attrs['mimeType'] == 'video/mp4']
+    audio_reprs = [rep for rep in reprs if rep.attrs['mimeType'] == 'audio/mp4']
+
+    v_adapt = soup.new_tag('AdaptationSet')
+    v_adapt.attrs['segmentAlignment'] = 'true'
+    v_adapt.attrs['par'] = '16:9'
+    period.append(v_adapt)
+    for idx, rep in enumerate(sorted(video_reprs, key=lambda r: int(r.attrs['bandwidth']))):
+        rep.attrs['id'] = 'v%d' % idx
+        rep.attrs['sar'] = '1:1'
+        v_adapt.append(rep)
+
+    a_adapt = soup.new_tag('AdaptationSet')
+    a_adapt.attrs['segmentAlignment'] = 'true'
+    period.append(a_adapt)
+    for idx, rep in enumerate(sorted(audio_reprs, key=lambda r: int(r.attrs['bandwidth']))):
+        rep.attrs['id'] = 'a%d' % idx
+        a_adapt.append(rep)
+
+    for adapt in adapts:
+        adapt.decompose()
+
+    # fix Title
+    if title:
+        soup.Title.string = title
+
+    # write back fixed xml into new_mpd_filename
+    with open(new_mpd_filename, "w") as fout:
+        fout.write(soup.prettify("utf-8"))
+
+
+def fix_init_mp4(filepath):
+    '''Fix audio init.mp4's ftyp for Android OS.
+
+    Some Android OS can't handle several brands, like dash, iso5.
+    Therefore, we just fix it by forcing the brand to isom.
+
+    :param filepath: filepath to an audio init.mp4.
+    '''
+    filepath = path(filepath)
+    # temp filename for extracted moov box
+    tmp_moov_filepath = named_tempfile(suffix='.box', prefix='moov_')
+    # temp filename for new init.mp4 by merging ftyp.box and moov.box
+    tmp_seg_filepath = named_tempfile(suffix='.mp4', prefix=filepath.namebase+'_')
+
+    ftyp_box = bytearray([0, 0, 0, 8+3*4]) # size: 8 + 3(major, minor, compatible) * 4
+    ftyp_box += 'ftyp' # box type
+    ftyp_box += 'isom' # major_brand
+    ftyp_box += bytearray([0, 0, 0, 1]) # minor_version
+    ftyp_box += 'isom' # compatible_brand
+    # TODO: add avc1, iso5, dash, ...?
+    cmd = template.FIX_INIT_MP4_TML % (filepath, tmp_moov_filepath)
+    run(cmd)
+
+    with open(tmp_seg_filepath, 'wb') as fout, open(tmp_moov_filepath, 'rb') as fin:
+        fout.write(ftyp_box)
+        shutil.copyfileobj(fin, fout)
+    shutil.copy(tmp_seg_filepath, filepath)
+
+    os.unlink(tmp_seg_filepath)
+    os.unlink(tmp_moov_filepath)
+
+
+def fix_init_mp4_in_mpd(mpd_filename):
+    '''Fix all audio init.mp4 files in a .mpd file.
+    '''
+    mpd_filepath = os.path.abspath(mpd_filename)
+    root = os.path.dirname(mpd_filepath)
+    for seg_filename in get_init_mp4_paths(mpd_filename, type_='audio/mp4'):
+        seg_filepath = os.path.join(root, seg_filename)
+        fix_init_mp4(seg_filepath)
+
+
+def patch_trun_saio(filepath):
+    '''Patch trun and saio box in a .mp4 file.
+    '''
+    media.move_trun_ahead_saio(filepath)
+
+
+def patch_trun_saio_in_mpd(mpd_filepath):
+    '''Patch trun and saio box for all segments in a .mpd file.
+    '''
+    mpd_filepath = os.path.abspath(mpd_filepath)
+    root = os.path.dirname(mpd_filepath)
+    for seg_filename in get_segment_paths(mpd_filepath):
+        seg_filepath = os.path.join(root, seg_filename)
+        patch_trun_saio(seg_filepath)
+
+
+def patch_drm_in_mpd(mpd_filepath):
+    '''Patch a .mpd file if segments are encrypted.
+    '''
+    mpd_filepath = os.path.abspath(mpd_filepath)
+    root = os.path.dirname(mpd_filepath)
+    soup = BeautifulSoup(open(mpd_filepath), 'xml')
+    if 'xmlns:cenc' in soup.MPD.attrs:
+        # Add PlayReady namespace
+        soup.MPD.attrs['xmlns:mspr'] = 'urn:microsoft:playready'
+
+        # An init.mp4 to extract DRM info
+        init_mp4 = get_init_mp4_paths(mpd_filepath)[0]
+        init_mp4 = os.path.join(root, init_mp4)
+
+        # Add ContentProtection for Widevine
+        system_id, content = media.extract_widevine_info(init_mp4)
+        system_id = system_id.encode('hex')
+        system_id = system_id[:8] + '-' + system_id[8:12] + '-' + system_id[12:16] + '-' + system_id[16:20] + '-' + system_id[20:]
+        content = base64.b64encode(content)
+        for rep in soup.findAll('Representation'):
+            cp = soup.new_tag('ContentProtection')
+            cp.attrs['schemeIdUri'] = 'urn:uuid:%s' % system_id
+            cp.string = content
+            rep.append(cp)
+
+        # Add ContentProtection for PlayReady
+        system_id, content = media.extract_playready_info(init_mp4)
+        system_id = system_id.encode('hex')
+        system_id = system_id[:8] + '-' + system_id[8:12] + '-' + system_id[12:16] + '-' + system_id[16:20] + '-' + system_id[20:]
+        content = base64.b64encode(content)
+        for rep in soup.findAll('Representation'):
+            cp = soup.new_tag('ContentProtection')
+            pro = soup.new_tag('mspr:pro')
+            cp.attrs['schemeIdUri'] = 'urn:uuid:%s' % system_id
+            pro.string = content
+            cp.append(pro)
+            rep.append(cp)
+
+        tmp_mpd_filepath = named_tempfile(suffix='.mpd')
+        with open(tmp_mpd_filepath, 'w') as fout:
+            fout.write(soup.prettify())
+        shutil.move(tmp_mpd_filepath, mpd_filepath)
+
+
+def is_validated_mpd(filename):
+    link = 'http://www-itec.uni-klu.ac.at/dash/?page_id=605'
+    data = {'sendFile':'1'}
+    files = {'File': open(filename, 'rb')}
+    result = requests.post(link, data=data, files=files)
+
+    soup = BeautifulSoup(result.text)
+    output = soup.findAll(id='Output')[0]
+    if 'DASH is valid' in output.text:
+        # print 'DASH is valid!'
+        return True
+    else:
+        # print 'DASH is invalid!'
+        return False
+
+
+def validate_mpd(filename):
+    if is_validated_mpd(filename):
+        print 'MPD (%s) is valid.' % filename
+    else:
+        print 'MPD (%s) is not valid.' % filename
+
+
+def make_dash_selfcontained(mpd_filename, new_mpd_filename, segment_folder):
+    '''Collect all stuff into one self-contained folder.
+
+    This function will try to gather(move) all segments in `mpd_filename`
+    to the same folder to `new_mpd_filename`. All segments, including init.mp4,
+    would be moved under `segment_folder` if provided.
+
+    :param mpd_filename: input .mpd filename.
+    :param new_mpd_filename: new .mpd filename.
+    :param segment_folder: sub-folder with new_mpd_filename for all segments.
+    '''
+    mpd_filename = path(mpd_filename)
+    old_root = mpd_filename.dirname()
+
+    new_mpd_filename = path(new_mpd_filename)
+    new_root = new_mpd_filename.dirname()
+    new_root.makedirs_p()
+
+    # make segment_folder absolute
+    new_segment_root = new_root.joinpath(segment_folder)
+    new_segment_root.makedirs_p()
+
+    soup = BeautifulSoup(open(mpd_filename), 'xml')
+    for seg in soup.find_all('SegmentURL'): # TODO: handle SegmentTemplate
+        old_path = old_root.joinpath(seg.attrs['media'])
+        new_path = new_segment_root.joinpath(old_path.basename())
+        shutil.move(old_path, new_path)
+        seg.attrs['media'] = new_root.relpathto(new_path)
+    for seg in soup.find_all('Initialization'):
+        old_path = old_root.joinpath(seg.attrs['sourceURL'])
+        new_path = new_segment_root.joinpath(old_path.basename())
+        shutil.move(old_path, new_path)
+        seg.attrs['sourceURL'] = new_root.relpathto(new_path)
+
+    with open(new_mpd_filename, 'w') as fout:
+        fout.write(soup.prettify("utf-8"))
+
+
+def get_segments(mpd_filename=None, soup=None):
+    '''Get all segments, w/o init.mp4, from a given .mpd file.
+
+    seealso:: :func:`get_segment_paths`
+    '''
+    if soup is None:
+        soup = BeautifulSoup(open(mpd_filename), 'xml')
+    return soup.find_all('SegmentURL') # TODO: handle SegmentTemplate
+
+
+def get_segment_paths(mpd_filename=None, soup=None):
+    '''Get all segments in path.path().
+
+    seealso:: :func:`get_segments`
+    '''
+    return [seg.attrs['media'] for seg in get_segments(mpd_filename, soup)]
+
+
+def get_init_mp4(mpd_filename=None, soup=None, type_=None):
+    '''Get all Initialization tag from a MPD.
+
+    You can set `type_` to just get specific initialization segments.
+    `type_` defaults to None, which means no filtering.
+
+    :param mpd_filename: a .mpd filename.
+    :param soup: a BeautifulSoup4 object. It would be used
+        directly if provided, otherwise, a new one is created
+        by provided `mpd_filename`.
+    :param type_: str, could be 'audio/mp4' or 'video/mp4'.
+    :rtype: a list of Initialization tags.
+    '''
+    if soup is None:
+        soup = BeautifulSoup(open(mpd_filename), 'xml')
+    if type_:
+        result = []
+        for rep in soup.find_all('Representation', mimeType=type_):
+            result.append(rep.findChild('Initialization'))
+        return filter(lambda e: e, result)
+    else:
+        return soup.find_all('Initialization')
+
+
+def get_init_mp4_paths(mpd_filename=None, soup=None, type_=None):
+    '''Get all Initialization path in a .mpd file.'''
+    return [seg.attrs['sourceURL'] for seg in get_init_mp4(mpd_filename, soup, type_)]
+
+
+def get_all_segments(mpd_filename=None, soup=None):
+    '''Get all media segments in a .mpd file.
+
+    Here, all means init.mp4 and segments.m4s.
+
+    :rtype: a list of segments in bs4.tag.
+    '''
+    if soup is None:
+        soup = BeautifulSoup(open(mpd_filename), 'xml')
+    return get_segments(mpd_filename, soup) + get_init_mp4(mpd_filename, soup)
+
+
+def get_all_segment_paths(mpd_filename=None, soup=None):
+    '''Get all media segments in a .mpd file, in url form.
+
+    Here, all means init.mp4 and segments.m4s.
+    The url might (and in most cases) be the relative path to `mpd_filename`.
+    '''
+    if soup is None:
+        soup = BeautifulSoup(open(mpd_filename), 'xml')
+    return get_segment_paths(mpd_filename, soup) + get_init_mp4_paths(mpd_filename, soup)
+
+
+def upload_mpd_to_s3(mpd_filepath, s3_bucket, root_s3_key):
+    '''Upload all files referenced in .mpd to S3.
+
+    Ex,
+    mpd_filepath: 1234.mpd, with the following references
+        1234/audio_init.mp4
+        1234/audio_seg_01.m4s
+        1234/audio_seg_02.m4s
+
+    root_s3_key: tmp/dash/
+    result:
+        tmp/dash/1234.mpd
+        tmp/dash/1234/audio_init.mp4
+        tmp/dash/1234/audio_seg_01.m4s
+        tmp/dash/1234/audio_seg_02.m4s
+
+    Note: assume segment paths are relative in .mpd file.
+
+    :param mpd_filename: .mpd filepath.
+    :param root_s3_key: s3 key as a root folder to contain all files,
+        including .mpd file.
+    '''
+    mpd_filepath = path(mpd_filepath)
+    root_s3_key = path(root_s3_key)
+    # TODO: Assume segments are in sub-folder with the same namebase as .mpd.
+    seg_dirpath = mpd_filepath.splitext()[0]  # no slash at the end.
+    s3.upload_dir_to_s3(seg_dirpath,
+                        s3_bucket,
+                        root_s3_key.joinpath(mpd_filepath.namebase))
+    s3.upload_file_to_s3(mpd_filepath,
+                         s3_bucket,
+                         root_s3_key.joinpath(mpd_filepath.basename()))
+
+
+def delete_mpd(mpd_filepath):
+    '''Delete .mpd and all referenced segments inside.'''
+    mpd_filepath = path(mpd_filepath)
+    root_mpd = mpd_filepath.dirname()
+    for seg in get_all_segment_paths(mpd_filepath):
+        seg_path = root_mpd.joinpath(seg)
+        os.unlink(seg_path)
+    os.unlink(mpd_filepath)

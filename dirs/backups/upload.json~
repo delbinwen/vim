@@ -1,0 +1,4 @@
+{
+	"stage" : "upload",
+	"source_url" : "s3://videopass-theater/mezzanine/INTERNET_tid_9900007_m.mp4"
+}

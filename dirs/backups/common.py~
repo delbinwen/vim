@@ -1,0 +1,261 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 drake <drakeguan@kkbox.com>
+#
+
+
+# Built-in modules
+from contextlib import contextmanager
+import tempfile
+from tempfile import NamedTemporaryFile
+import time
+
+# Additional modules
+import invoke
+import path
+import requests
+
+# local modules
+from . import dglog
+
+
+def get_title_id_from_namebase(namebase):
+    """Return the title ID of a namebase (ex, INTERNET_tid_9900001_m).
+
+    :rtype: int
+    """
+    return int(list(filter(lambda x: x.isdigit(), namebase.split('_')))[-1])
+
+
+def get_title_id(filepath):
+    '''Return the title ID of a file or S3 key.
+
+    Assume filepath as {CPID}_tid_{title_id}_*.
+
+    :rtype: int
+    '''
+    return get_title_id_from_namebase(path.path(filepath).basename())
+
+
+def get_cpid(filepath):
+    '''Return the CPID of a file or S3 key if available.
+
+    Note: assume filepath as {CPID}_tid_{title_id}_*.
+
+    :rtype: string
+    '''
+    return path.path(filepath).basename().split('_')[0]
+
+
+def named_tempfile(mode='w+b', bufsize=-1, suffix='', prefix='tmp',
+                   dir_=None, delete=True):
+    '''Wrapper to tempfile.NamedTemporaryFile by just returning the filepath.
+
+    All arguments are similar to tempfile.NamedTemporaryFile.
+
+    rtype: absoluate filepath in path.path().'''
+    with NamedTemporaryFile(mode, bufsize, suffix,
+                            prefix, dir_, delete) as tmp_f:
+        filepath = path.path(tmp_f.name)
+    return path.path(filepath).abspath()
+
+
+def named_tempdir(suffix='', prefix='tmp', dir_=None):
+    '''Convenient wrapper to tempfile.mkdtemp.
+
+    All arguments are similar to tempfile.mkdtemp.
+
+    rtype: absolute dirpath in path.path().'''
+    return path.path(tempfile.mkdtemp(suffix, prefix, dir_))
+
+
+@contextmanager
+def mkdir_chdir(dir_):
+    '''mkdir(), chdir(), and then yield (original folder, new folder).
+
+    Related to :py:func:`.mkdir_chdir_rmtree`
+
+    :param str dir_: the new directory
+    :return: (original folder in path.path(), new folder in path.path())
+    :rtype: tuple
+    '''
+    orig = path.path().abspath()
+    new = path.path(dir_)
+    new.makedirs_p()
+    new.chdir()
+    yield (orig, new)
+
+
+@contextmanager
+def mkdir_chdir_rmtree(dir_):
+    '''mkdir(), chdir() and remove the directory  after the context.
+
+    Related to :py:func:`.mkdir_chdir`
+
+    :param str dir_: the new directory
+    :return: (original folder in path.path(), new folder in path.path())
+    :rtype: tuple
+    '''
+    with mkdir_chdir(dir_) as (orig, new):
+        yield (orig, new)
+    # back to the original folder
+    orig.chdir()
+    # remove the new folder
+    new.rmtree_p()
+
+
+@contextmanager
+def tempdir_chdir(dir_=None):
+    '''tempdir(), chdir(), and then yield (original folder, temp folder).
+
+    Related to :py:func:`.tempdir_chdir_rmtree`
+
+    :param str dir_: prefix for the temporary directory.
+    :return: (original folder in path.path(), temp folder in path.path())
+    :rtype: tuple
+    '''
+    # prepare a temporary folder
+    try:
+        temp = named_tempdir(dir_=dir_)
+    except OSError:
+        # roll back to use default dir!
+        temp = named_tempdir()
+    # remember the current folder
+    orig = path.path().abspath()
+    # switch to the temporary folder
+    temp.chdir()
+    yield (orig, temp)
+
+
+@contextmanager
+def tempdir_chdir_rmtree(dir_=None):
+    '''tempdir(), chdir() and remove the whole tempdir after the context.
+
+    Related to :py:func:`.tempdir_chdir`
+
+    :param str dir_: prefix for the temporary directory.
+    :return: (original folder in path.path(), temp folder in path.path())
+    :rtype: tuple
+    '''
+    try:
+        with tempdir_chdir(dir_) as (orig, temp):
+            yield (orig, temp)
+    finally:
+        # back to the original folder
+        orig.chdir()
+        # remove the whole temporary folder
+        temp.rmtree_p()
+
+
+def download_big_file_via_http(source_url,
+                               download_folder=None,
+                               download_filename=None,
+                               random_filename=False):
+    '''Download a huge (GB level) file from web server.
+
+    If `download_folder` doesn't exist, it would get created.
+
+    :param source_url: file's http url.
+    :param download_folder: destination folder to save the downloaded file.
+    :param download_filename: it overwrites `download_folder`, default to None.
+    :param random_filename: randomized filename?
+    :rtype: filename of downloaded file (as path.path())
+    '''
+    source_url = path.path(source_url)
+    if random_filename:
+        target = named_tempfile(suffix='.mov', prefix=source_url.namebase+'_')
+        download_folder = target.dirname()
+    elif download_filename:
+        target = path.path(download_filename).abspath()
+        download_folder = target.dirname()
+    elif download_folder:
+        if not download_folder.endswith('/'):
+            download_folder = download_folder + '/'
+        download_folder = path.path(download_folder).abspath()
+        target = download_folder.joinpath(source_url.basename())
+    else:
+        download_folder = path.path.getcwd()
+        target = download_folder.joinpath(source_url.basename())
+    download_folder.makedirs_p()
+
+    # Use a chunk size of 15 MiB (feel free to change this)
+    chunk_size = 15728640  # 15 * 1024 * 1024
+
+    # the stream=True: keep alive
+    req = requests.get(source_url, stream=True)
+    with open(target, 'wb') as local_file:
+        for chunk in req.iter_content(chunk_size=chunk_size):
+            if chunk:
+                local_file.write(chunk)
+                local_file.flush()
+
+    return target
+
+
+def run(cmd):
+    """Run the command with support of dglog for stdout and stderr.
+
+    * This function would use invoke.run() to do system call.
+    * The stdout and stderr are hidden.
+    * The stdout and (if available) stderr would utilize dglog.
+
+    :param: invoke.run()"""
+    dglog.info({'cmd': cmd,
+                '@message': 'BEGIN-CMD'})
+    try:
+        result = invoke.run(cmd, hide='both')
+    except invoke.exceptions.Failure as e:
+        dglog.exception({'cmd': cmd})
+        raise(e)
+    msg = {'cmd': cmd,
+           '@message': 'END-CMD',
+           'return_code': result.return_code
+           }
+    if result.stdout.strip():
+        msg['stdout'] = result.stdout
+    if result.stderr.strip():
+        msg['stderr'] = result.stderr
+    dglog.info(msg)
+    return result
+
+
+def safe_run(cmd):
+    """Run the command without raising Failure exception.
+
+    Note: This might not be a good idea to do that!
+
+    Refer: :func:`run`
+    """
+    try:
+        return run(cmd)
+    except invoke.exceptions.Failure:
+        return None
+
+
+def run_with_retry(cmd, max_count=5, msg=''):
+    '''Try to execute 'cmd' at most 'max_count' times.
+
+    :param cmd command to execute
+    :param max_count the max number of times to retry
+    :param msg the message to save to log and/or print to stdout
+    '''
+    retries = 0
+    delay = 180  # default delay between retries
+    while retries < max_count:
+        try:
+            return run(cmd)
+        except invoke.exceptions.Failure as e:
+            time.sleep(delay)
+            retries += 1
+            if retries >= max_count:
+                raise(e)
+            log_msg = {
+                '@message': 'RETRY-CMD: %s' % msg,
+                'cmd': cmd,
+                'retry-count': retries,
+                'retry-max-count': max_count,
+            }
+            dglog.exception(log_msg)
+    return None

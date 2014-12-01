@@ -1,0 +1,100 @@
+"                         ,v
+"                       ,v
+"                     ,v
+"                   ,v
+"                 ,v
+"               ,v
+"             ,v
+"           ,v
+"         ,v
+"       ,v
+"     ,v
+let ,v
+"   ,v
+let g:airline_symbols.linenr = '⭡',V
+let g:airline_symbols.readonly = '⭤',V
+let g:airline_symbols.branch = '⭠',V
+let g:airline_right_alt_sep = '⮃',V
+let g:airline_right_sep = '⮂',V
+let g:airline_left_alt_sep = '⮁',V
+let g:airline_left_sep = '⮀',V
+",v
+,V
+let g:choosewin_overlay_enable = 1,V
+" show big letters,V
+nmap  -  <Plug>(choosewin),V
+" mapping,V
+" Window Chooser ------------------------------,V
+vmap <expr> <S-M-UP> DVB_Drag('up'),V
+vmap <expr> <S-M-DOWN> DVB_Drag('down'),V
+vmap <expr> <S-M-RIGHT> DVB_Drag('right'),V
+vmap <expr> <S-M-LEFT> DVB_Drag('left'),V
+" mappings to move blocks in 4 directions,V
+" DragVisuals ------------------------------,V
+let g:AutoClosePumvisible = {"ENTER": "\<C-Y>", "ESC": "\<ESC>"},V
+" Fix to let ESC work as espected with Autoclose plugin,V
+" Autoclose ------------------------------,V
+let g:tabman_focus  = 'tf',V
+let g:tabman_toggle = 'tl',V
+" TabMan ------------------------------,V
+" mappings to toggle display, and to focus on it,V
+map <F12> :Dbg up<CR>,V
+map <F11> :Dbg down<CR>,V
+map <F10> :Dbg watch<CR>,V
+map <F9> :Dbg break<CR>,V
+map <F8> :Dbg here<CR>,V
+map <F7> :Dbg out<CR>,V
+map <F6> :Dbg into<CR>,V
+map <F5> :Dbg over<CR>,V
+" add some useful mappings,V
+let g:vim_debug_disable_mappings = 1,V
+" disable default mappings, have a lot of conflicts with oter plugins,V
+" Vim-debug ------------------------------,V
+let g:yankring_history_dir = '~/.vim/dirs/',V
+" store yankring history file there too,V
+Bundle 'YankRing.vim',V
+" Yank history navigation,V
+Bundle 'matchit.zip',V
+" XML/HTML tags navigation,V
+Bundle 'fisadev/dragvisuals.vim',V
+" Drag visual blocks arround,V
+Bundle 'Townk/vim-autoclose',V
+" Autoclose,V
+Bundle 'tpope/vim-surround',V
+" Surround,V
+Bundle 'rosenfeld/conque-term',V
+" Consoles as buffers,V
+Bundle 'kien/tabman.vim',V
+" Tab list panel,V
+Bundle 'motemen/git-vim',V
+" Git integration,V
+Bundle 'scrooloose/nerdcommenter',V
+" Code commenter,V
+Bundle 'fisadev/vim-debug.vim',V
+" Python and PHP Debugger,V
+Bundle 'tpope/vim-fugitive',V
+" Plugins from github repos:,V
+count-pending-activity-tasks,v
+END-CALLING,v
+LOCAL_TMP_DIR = '/tmp/videopass-encoding',V
+--debug,v
+inv swf.start_workflow_runner -t smart_default,v
+, ,v
+import aaa,V
+cmd,v
+.,v
+cm,v
+cli,v
+disk2,v
+/,v
+media,v
+disk1,v
+/media/disk1/tmp,v
+7164,v
+60,v
+=,v
+decision_duration,v
+360000,v
+workflow_duration,v
+        ,v
+schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,,v

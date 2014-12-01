@@ -1,0 +1,154 @@
+<?php
+require_once "smooth.php";
+
+if ( $argc < 3 ) {
+    echo "Usage: php $argv[0] MPDFile Dest [resolution]\n";
+    exit (1);
+}
+
+$mpd_obj = simplexml_load_file ( $argv[1] );
+$base_dir = dirname ( $argv[1] );
+$is_stb = false ;
+
+$cache_data = array ();
+if ( !preg_match ( "#PT(?:(\d+)H)?(?:(\d+)M)?(\d+(?:\.\d+)?)S#i", $mpd_obj->attributes()->mediaPresentationDuration, $match_play_time ) ) {
+    echo $argv[1] . ": Can't search length\n";
+    exit (1);
+}
+
+@mkdir ( $argv[2] );
+
+$cache_data['media_length'] = intval ( $match_play_time[1] ) * 3600 + intval ( $match_play_time[2] ) * 60 + floatval ( $match_play_time[3] );
+
+foreach ( $mpd_obj->Period->AdaptationSet as $AdaptationSet ) {
+    $type = '';
+    $list = array ();
+    $segments = array ();
+
+    foreach ( $AdaptationSet->Representation as $Representation ) {
+        if ( isset ( $Representation->attributes()->audioSamplingRate ) ) {
+            $type = 'audio';
+        } else if ( isset ( $Representation->attributes()->frameRate ) ) {
+            $type = 'video';
+        } else {
+            break;
+        }
+
+        if ( isset( $argv[3] ) && intval( $argv[3] ) != 0 && $type == 'video' && $Representation->attributes()->height != intval ( $argv[3] ) ) {
+            continue;
+        }
+
+        $bitrate = intval ( $Representation->attributes()->bandwidth );
+        $mp4_info = process_mp4_init ( $base_dir . "/" . $Representation->SegmentList->Initialization->attributes()->sourceURL );
+        $current_segment = array ();
+        $chunks = 0;
+        $fragment_dir = $argv[2] . "/QualityLevels(" . $bitrate . ")";
+        @mkdir ( $fragment_dir );
+
+        foreach ( $Representation->SegmentList->SegmentURL as $url ) {
+            $data = process_mp4_fragment ( $base_dir . "/" . $url->attributes()->media , $mp4_info , false , $is_stb );
+            file_put_contents ( $fragment_dir . "/Fragments(" . $type . "=" . $data['base_media_time'] . ")" , $data['fragment'] );
+            $current_segment[$data['base_media_time']] = array ( $base_dir . "/" . $url->attributes()->media , $data['fragment_duration'] );
+            $chunks++;
+        }
+
+        $segments[$bitrate] = array ( $current_segment , $mp4_info );
+        $list[] = "<QualityLevel Index=\"" . count($list) . "\" Bitrate=\"" . $bitrate . "\" " . $mp4_info['stream_spec'] . " />\n";
+    }
+
+    switch ( $type ) {
+        case 'audio':
+        case 'video':
+            $stream_index = "<StreamIndex Type=\"$type\" QualityLevels=\"" . count ( $list ) . "\" Chunks=\"" .
+                $chunks . "\" Url=\"QualityLevels({bitrate})/Fragments($type={start time})\">\n" . 
+                implode ( "" , $list );
+            break;
+
+        default:
+            continue;
+    }
+
+    if ( count ( $list ) ) {
+        $cache_data[$type] = array ( $stream_index , $segments , $data['base_media_time'] );
+    }
+}
+
+if ( $mp4_info['pssh'] !== false ) {
+    $cache_data['playready'] = '<Protection><ProtectionHeader SystemID="9A04F079-9840-4286-AB92-E65BE0885F95">' . base64_encode($mp4_info['pssh']) . "</ProtectionHeader></Protection>\n";
+}
+
+$manifest = array ();
+
+$manifest[] = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" .
+              "<SmoothStreamingMedia MajorVersion=\"2\" MinorVersion=\"0\" Duration=\"" . ( $cache_data['media_length'] * 10000000 ) . "\">\n";
+
+foreach ( array ( "audio" , "video" ) as $type ) {
+    if ( !isset ( $cache_data[$type] ) ) {
+        continue;
+    }
+    // 取第一個 bitrate 的 timeline 資料
+    $timeline = current ( $cache_data[$type][1] );
+    $timeline = $timeline[0];
+    $chunks = array ();
+
+    if ( $is_stb ) {
+        $lasttime = $cache_data[$type][2];
+        foreach ( $timeline as $time => $timedata ) {
+            if ( $time == $lasttime ) {     // output <c t="..." d="..." />
+                $chunks[] = "<c t=\"$time\" d=\"" . $timedata[1] . "\" />\n";
+            } else {                        // output <c t="..." />
+                $chunks[] = "<c t=\"$time\" />\n";
+            }
+        }
+    } else {
+        $lasttime = 0;
+        $lastduration = 0;
+        foreach ( $timeline as $time => $timedata ) {
+            if ( $time != 0 ) {
+                $chunks[] = "<c d=\"" . ( $time - $lasttime ) . "\" />\n";
+            }
+            $lasttime = $time;
+            $lastduration = $timedata[1];
+        }
+        $chunks[] = "<c d=\"" . $lastduration . "\" />\n";
+    }
+
+    /*
+    if ( $type == 'video' && ( $match_manifest[2] != '' || $match_manifest[3] != '' ) ) {
+        $stream_list = array ();
+        $count = 0 + $match_manifest[3];
+
+        foreach ( $cache_data[$type][1] as $bitrate => $bitrate_list ) {
+            if ( $match_manifest[2] == '' || preg_match ( "/MaxHeight=\"" . $match_manifest[2] . "\"/" , $bitrate_list[1]['stream_spec'] ) ) {
+                $stream_list[] = "<QualityLevel Index=\"" . count($list) . "\" Bitrate=\"" . $bitrate . "\" " . $bitrate_list[1]['stream_spec'] . " />\n";
+            }
+
+            if ( --$count == 0 ) {
+                break;
+            }
+        }
+        if ( count ( $stream_list ) == 0 ) {
+            continue;
+        }
+
+        $manifest[] = "<StreamIndex Type=\"$type\" QualityLevels=\"" . count ( $stream_list ) . "\" Chunks=\"" .
+            count ( $chunks ) . "\" Url=\"QualityLevels({bitrate})/Fragments($type={start time})\">\n" . 
+            implode ( "" , $stream_list );
+
+    } else { */
+        $manifest[] = $cache_data[$type][0];
+        /*
+    }
+    */
+
+    $manifest[] = implode ( "" , $chunks );
+
+    $manifest[] = "</StreamIndex>\n";
+}
+
+if ( isset ( $cache_data['playready'] ) ) {
+    $manifest[] = $cache_data['playready'];
+}
+
+$manifest[] = "</SmoothStreamingMedia>\n";
+file_put_contents ( $argv[2] . "/Manifest" , implode ( "" , $manifest ) );

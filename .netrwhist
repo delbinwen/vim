@@ -1,0 +1,10 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhist_cnt =8
+let g:netrw_dirhist_1='/Users/wesleywen/.vim'
+let g:netrw_dirhist_2='/Users/wesleywen/.vim/bundle'
+let g:netrw_dirhist_3='/Users/wesleywen/.vim/bundle/vundle'
+let g:netrw_dirhist_4='/Users/wesleywen/.vim/bundle'
+let g:netrw_dirhist_5='/Users/wesleywen/.vim'
+let g:netrw_dirhist_6='/Users/wesleywen'
+let g:netrw_dirhist_7='/Users/wesleywen/Documents/Work/Videopass/videopass-encoding'
+let g:netrw_dirhist_8='/private/tmp/videopass-encoding'

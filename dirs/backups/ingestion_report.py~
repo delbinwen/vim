@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 Shuen-Huei (Drake) Guan <drakeguan@kkbox.com>
+#
+# refer to ticket #81293
+
+# Built-in modules
+import json
+
+# Additional modules
+import arrow
+from decorator import decorator
+import keen
+from keen.client import KeenClient
+import requests
+
+# local modules
+import common
+try:
+    import config
+except ImportError:
+    import config_default as config
+import dglog
+
+
+def do_post(data):
+    '''Do HTTP POST to stage api server.'''
+    # Try Keen.IO
+    if hasattr(config, 'KEEN_PROJECT_ID'):
+        client = KeenClient(
+                project_id=config.KEEN_PROJECT_ID,
+                write_key=config.KEEN_WRITE_KEY,
+                read_key=config.KEEN_READ_KEY,
+                post_timeout=config.KEEN_POST_TIMEOUT
+                )
+        client.add_event(config.KEEN_COLLECTION, data)
+    headers = {'content-type': 'application/json'}
+
+    url = config.INGESTION_REPORT_API_URL
+    retries = 0
+    # Retry at most 5 times in case of connection error.
+    while retries < 5:
+        try:
+            response = requests.post(url,
+                                     data=json.dumps(data),
+                                     headers=headers)
+            dglog.info(
+                'Post Report_API: response: {status_code} data: {data}'.format(
+                    status_code=response.status_code, data=data))
+            break
+        except requests.exceptions.ConnectionError as e:
+            dglog.exception(e)
+            retries = retries + 1
+            dglog.info('(%d/5) Connection error; retry post', retries)
+
+    return response
+
+
+def get_stage_protocol(stage_string):
+    stage = stage_string
+    protocol = None
+
+    if stage_string == 'transcode_status':
+        stage = 'transcode'
+    elif stage_string.startswith(('encrypt', 'adaptive', 'deploy')):
+        values = stage_string.split('_')
+        stage = values[0]
+        protocol = values[1]
+
+    return (stage, protocol)
+
+
+def prepare_stage_start_report(stage, title_id, protocol=None):
+    ''' Construct the data (as dictionary) to indicate the stage start. '''
+    datetime = str(arrow.utcnow())
+    data = {
+        'stage': stage,
+        'title_id': title_id,
+        'datetime': datetime,
+        'start_datetime': datetime,
+    }
+
+    if protocol is not None:
+        data.update({'protocol': protocol})
+
+    return data
+
+
+def prepare_stage_end_report(stage_start, status, description):
+    ''' Construct the data (as dictionary) to indicate the stage end.  '''
+    data = stage_start
+    status = {
+        'end_datetime': str(arrow.utcnow()),
+        'status': {
+            'code': status,
+            'description': description
+        }
+    }
+    data.update(status)
+
+    return data
+
+
+@decorator
+def ingestion_report(func, *args, **kwargs):
+    '''Decorator for Content Ingestion (Report) API.'''
+    in_, out_ = args[0], args[1]
+    # report with starttime
+    title_id = common.get_title_id(in_['source_url'])
+    (stage, protocol) = get_stage_protocol(in_['stage'])
+    data = prepare_stage_start_report(stage, title_id, protocol)
+    # do_post(data)
+
+    # invoke the wrapped task
+    (status, desc, payload) = func(in_, out_)
+
+    # Post stage end data with Report API.
+    data = prepare_stage_end_report(data, status, desc)
+    data.update(payload)
+    # do_post(data)
+
+    return status

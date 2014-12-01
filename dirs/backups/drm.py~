@@ -1,0 +1,221 @@
+# Built-in modules
+import base64
+import json
+import os
+import shutil
+import tempfile
+import uuid
+
+# Additional modules
+from Crypto.Cipher import AES
+import path
+import requests
+
+# Local modules
+import common
+try:
+    import config
+except ImportError:
+    import config_default as config
+import dglog
+from hls import get_media_segments
+try:
+    import template
+except ImportError:
+    import template_default as template
+
+
+def get_key_pair_from_title_id(title_id, content_type=''):
+    '''Return a key pair (key_id, key) from key server.
+
+    This function will connect to Key Server to acquire key information for
+    encryption.
+
+    :param title_id: title id
+    :param str contet_type: SD | HD | AUDIO
+    :return: (key_id, key)
+    '''
+    types = ('SD', 'HD', 'AUDIO')
+    content_type = content_type if content_type in types else ''
+
+    data = {
+        'content_id': str(title_id),
+        'content_type': content_type
+    }
+    result = requests.post(config.KEY_SERVER_URL, data=data)
+    result = json.loads(result.text)
+    # ex.{"status":0,"status_message":"OK","message":{"key_id":"f6099d24b0bbe0846289ee30e19b89f2","cenc_key":"74a717b63f2949a89cbed231fe3f674d"}}
+    return result['message']['key_id'], result['message']['cenc_key']
+
+
+def generate_playready_record(key_id, key,
+                              la_url='', lui_url='', service_id='',
+                              custom_attributes=None):
+    '''Generate plain text or base64-encoded PlayReady record.
+
+    :param key_id: 16-byte hex in string representation
+    :param key:
+    :param la_url: URL for PlayReady License Server
+    :param lui_url: URL for Login UI
+    :param service_id:
+    :param custom_attributes:
+    :return: plain text or base64-encoded PlayReady record
+    '''
+    # Encode key_id as base64.
+    asc = key_id.bytes
+    desc = asc[::-1]
+    # Update key id from ABCDEFGHIJKLMNOP to DCBAFEHGIJKLMNOP.
+    key_id = desc[-4:]+desc[-6:-4]+desc[-8:-6]+asc[8:]
+    key_id_b64 = base64.b64encode(key_id)
+
+    # Use AES to calculate chucksum.
+    # Algorithm:
+    # 16-byte KeyId is encrypted with 16-byte AES content key using ECB mode.
+    # The first 8 bytes of the buffer is extracted and base64 encoded.
+    cipher = AES.new(key.bytes, AES.MODE_ECB)
+    checksum = cipher.encrypt(key_id)
+    checksum_b64 = base64.b64encode(checksum[0:8])
+
+    record = template.PLAYREADY_RECORD_TML.format(
+        key_id=key_id_b64,
+        checksum=checksum_b64,
+        la_url=la_url or config.LICENSE_SERVER_URL,
+        lui_url=lui_url or config.LOGIN_SERVER_URL,
+        service_id=service_id or config.SERVER_ID
+        )
+
+    return record.encode('utf-16-le')
+
+
+def generate_drm_info_xml(key_id, key, type_=''):
+    """Generate drm info xml file that will be fed to MP4Box to encrypt media files.
+
+    Notice: You have to kill the generated drm info XML file then.
+
+    :param str drm_info_path: filepath for the generated XML.
+    :param key_id:
+    :param key:
+    :param str type_: SD, HD or AUDIO
+    """
+    key_id = uuid.UUID(key_id)
+    key = uuid.UUID(key)
+
+    # Generate PlayReady record.
+    record = generate_playready_record(key_id, key)
+
+    # Generate random (8-byte) IV.
+    initial_iv = os.urandom(8).encode('hex')
+
+    gpac_drm_txt = template.MP4BOX_DRM_XML_TML.format(
+        header_obj_len=10 + len(record),
+        record_len=len(record),
+        record_data=base64.b64encode(record),
+        widevine_key_id=key_id.hex,
+        provider_len=len('KKBOX'),
+        provider='KKBOX',
+        content_id_len=len('KKBOX'),
+        content_id='KKBOX',
+        first_IV=initial_iv,
+        key_id=key_id.hex,
+        key=key.hex
+    )
+
+    # Write the XML to output.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as fout:
+        fout.write(gpac_drm_txt)
+        filepath = path.path(fout.name)
+    return filepath
+
+
+def apply_drm_dash_mss(drm_info_path, media_filepath):
+    # Instruct MP4Box -crypt command to store the output in enc directory.
+    output_filepath = path.path('enc/' + media_filepath.name).abspath()
+    output_filepath.dirname().makedirs_p()
+
+    # Prepare MP4Box encryption command.
+    enc_cmd_txt = template.MP4BOX_ENCRYPTION_TML.format(
+        drm_info_path = drm_info_path,
+        media_file_path = media_filepath,
+        output_file_path = output_filepath
+    )
+
+    # Execute the encryption command.
+    dglog.info('MP4Box encryption')
+    common.run(enc_cmd_txt)
+    return output_filepath
+
+
+def apply_drm_hls(hls_url, key_id, key):
+    '''
+    :param hls_url a path object represents the path of master index file
+    :param key_id key id in UUID urn representation
+    :param key key in UUID urn representation
+    '''
+    key_id = uuid.UUID(key_id)
+    key = uuid.UUID(key)
+
+    # Generate PlayReady record and encode it with base64.
+    record = generate_playready_record(key_id, key)
+    record = base64.b64encode(record)
+    # Generate random (8-byte) IV.
+    initial_iv = os.urandom(8).encode('hex')
+
+    # Create a directory, enc, to store the output files.
+    enc_output_dir = hls_url.parent.joinpath('enc')
+    enc_output_dir.makedirs_p()
+
+    # Copy master index file to enc directory.
+    shutil.copyfile(hls_url, enc_output_dir.joinpath(hls_url.name))
+
+    # Copy alternative index files and segment files to enc directory.
+    hls_dir = path.path(hls_url.replace('.m3u8', '.hls'))
+    alt_hls_dir = enc_output_dir.joinpath(hls_dir.name)
+    if alt_hls_dir.exists():
+        alt_hls_dir.rmtree()
+    shutil.copytree(hls_dir, alt_hls_dir)
+
+    # Get the list of all alternative index files.
+    profile_urls = alt_hls_dir.files()
+    for profile_url in profile_urls:
+        apply_drm_hls_profile(profile_url, key, initial_iv, record)
+
+    return enc_output_dir.joinpath(hls_url.name)
+
+
+def apply_drm_hls_profile(profile_url, key, initial_iv, playready_record):
+    '''
+    :param key UUID object of key
+    :param initial_iv initial IV in hex string representation (without leading 0x)
+    '''
+    # profile_dir = path(profile_url.replace('.m3u8', ''))
+    initial_iv_int = int(initial_iv, 16)
+    for (idx, seg_file) in enumerate(get_media_segments(profile_url)):
+        # Calculate the IV for given segment file.
+        iv = initial_iv_int + idx
+
+        # Format OpenSSL encryption command.
+        enc_cmd_txt = template.OPENSSL_ENCRYPTION_TML.format(
+                    source_ts = seg_file,
+                    encrypted_ts = seg_file + '.tmp',
+                    key = key.hex,
+                    iv = '%016x' % int(iv)
+                )
+        # Execute the encryption command.
+        dglog.info('OpenSSL encryption')
+        common.run(enc_cmd_txt)
+
+    # Finally we need to patch .m3u8 file.
+    f = open(profile_url)
+    f_lines = f.readlines()
+    f.close()
+
+    # Add IV and PlayReady record into .m3u8 file.
+    drm_info_txt = template.PLAYREADY_PATCH_FOR_M3U8_TML.format(
+                iv_base64=base64.b64encode(initial_iv.decode('hex')),
+                playready_base64=playready_record
+            )
+    f_lines.insert(5, drm_info_txt + '\n')
+    f = open(profile_url, 'w')
+    f_lines = ''.join(f_lines)
+    f.write(f_lines)
+    f.close()

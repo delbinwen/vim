@@ -1,0 +1,10 @@
+[default]
+output = json
+region = ap-northeast-1
+
+[profile videopass]
+output = json
+region = ap-northeast-1
+[profile personal]
+output = json
+region = ap-northeast-1

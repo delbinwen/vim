@@ -1,0 +1,14 @@
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+# On branch feature/set_tmp_dir_for_mp4box
+# Changes to be committed:
+#	modified:   emilia/template_default.py
+#
+# Untracked files:
+#	.DS_Store
+#	.idea/
+#	common.py.orig
+#	emilia/config.py
+#	tasks_report.py
+#

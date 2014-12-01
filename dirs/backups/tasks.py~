@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 drakeguan <drakeguan@kkbox.com>
+
+
+import invoke
+import tasks_local
+import tasks_gearman
+import tasks_web
+
+ns = invoke.Collection()
+ns.add_collection(invoke.Collection.from_module(tasks_local), 'local')
+ns.add_collection(invoke.Collection.from_module(tasks_gearman), 'gearman')
+ns.add_collection(invoke.Collection.from_module(tasks_web), 'web')

@@ -1,0 +1,392 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+# Built-in modules
+import json
+from subprocess import Popen, PIPE, STDOUT
+import threading
+
+# Additional modules
+from flowy.exception import TaskError
+from flowy.proxy import SWFActivityProxy as ActivityProxy
+from flowy.proxy import SWFWorkflowProxy as WorkflowProxy
+from flowy.scanner import swf_activity as activity
+from flowy.scanner import swf_workflow as workflow
+from flowy.task import SWFActivity as Activity
+from flowy.task import SWFWorkflow as Workflow
+
+# local modules
+try:
+    from . import config
+except ImportError:
+    from . import config_default as config
+
+
+def _retry_activity(max_attempts, activity_func, *args, **kwargs):
+    attempts = 0
+    while attempts < max_attempts:
+        activity_result = activity_func(*args, **kwargs)
+        try:
+            _ = activity_result.result()
+            return activity_result
+        except TaskError as e:
+            attempts += 1
+            if attempts >= max_attempts:
+                raise(e)
+
+
+@workflow(version='1.0', task_list='default')
+class DashWorkflow(Workflow):
+    # Activity declaration.
+    encrypt_dash = ActivityProxy(name='EncryptDash', version='1.0',
+                                 task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_ENCRYPT,
+                                 schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                 heartbeat=600, retry=10, error_handling=True)
+    adaptive_dash = ActivityProxy(name='AdaptiveDash', version='1.0',
+                                  task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_ADAPTIVE,
+                                  schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                  heartbeat=600, retry=10, error_handling=True)
+    deploy_dash = ActivityProxy(name='DeployDash', version='1.0',
+                                task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_DEPLOY,
+                                schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                heartbeat=600, retry=10, error_handling=True)
+
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+
+        # Encrypt isource
+        result_encrypt = _retry_activity(10, self.encrypt_dash, source_url,
+                                         isource_audio_urls,
+                                         isource_video_urls)
+        result_encrypt_json = json.loads(result_encrypt.result())
+        if not result_encrypt_json['status']:
+            return result_encrypt   # encryption failed
+
+        # Adaptive dash package generation
+        result_adaptive = _retry_activity(10, self.adaptive_dash, source_url,
+                                          result_encrypt_json['encrypted_isource_audio_urls'],
+                                          result_encrypt_json['encrypted_isource_video_urls'])
+        result_adaptive_json = json.loads(result_adaptive.result())
+        if not result_adaptive_json['status']:
+            return result_adaptive  # package generation failed
+
+        # Deploy dash package
+        result_deploy_dash = _retry_activity(10, self.deploy_dash, source_url,
+                                             result_adaptive_json['dash_url'])
+        return result_deploy_dash
+
+
+@workflow(version='1.0', task_list='default')
+class HlsWorkflow(Workflow):
+    # Activity declaration.
+    encrypt_hls = ActivityProxy(name='EncryptHls', version='1.0',
+                                task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_ENCRYPT,
+                                schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                heartbeat=600, retry=10, error_handling=True)
+    adaptive_hls = ActivityProxy(name='AdaptiveHls', version='1.0',
+                                 task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_ADAPTIVE,
+                                 schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                 heartbeat=600, retry=10, error_handling=True)
+    deploy_hls = ActivityProxy(name='DeployHls', version='1.0',
+                               task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_DEPLOY,
+                               schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                               heartbeat=600, retry=10, error_handling=True)
+
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+
+        # Adaptive hls package generation
+        result_adaptive = _retry_activity(10, self.adaptive_hls, source_url,
+                                          isource_audio_urls,
+                                          isource_video_urls)
+        result_adaptive_json = json.loads(result_adaptive.result())
+        if not result_adaptive_json['status']:
+            return result_adaptive  # package generation failed
+
+        # Encrypt isource
+        result_encrypt = _retry_activity(10, self.encrypt_hls, source_url,
+                                         result_adaptive_json['hls_url'])
+        result_encrypt_json = json.loads(result_encrypt.result())
+        if not result_encrypt_json['status']:
+            return result_encrypt   # encryption failed
+
+        # Deploy hls package
+        result_deploy_hls = _retry_activity(10, self.deploy_hls, source_url,
+                                            result_encrypt_json['encrypted_hls_url'])
+        return result_deploy_hls
+
+
+@workflow(version='1.0', task_list='default')
+class MssWorkflow(Workflow):
+    # Activity declaration.
+    encrypt_mss = ActivityProxy(name='EncryptMss', version='1.0',
+                                task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_ENCRYPT,
+                                schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                heartbeat=600, retry=10, error_handling=True)
+    adaptive_mss = ActivityProxy(name='AdaptiveMss', version='1.0',
+                                 task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_ADAPTIVE,
+                                 schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                 heartbeat=600, retry=10, error_handling=True)
+    deploy_mss = ActivityProxy(name='DeployMss', version='1.0',
+                               task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_DEPLOY,
+                               schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                               heartbeat=600, retry=10, error_handling=True)
+
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+
+        # Encrypt isource
+        result_encrypt = _retry_activity(10, self.encrypt_mss, source_url,
+                                         isource_audio_urls,
+                                         isource_video_urls)
+        result_encrypt_json = json.loads(result_encrypt.result())
+        if not result_encrypt_json['status']:
+            return result_encrypt   # encryption failed
+
+        # Adaptive mss package generation
+        result_adaptive = _retry_activity(10, self.adaptive_mss, source_url,
+                                          result_encrypt_json['encrypted_isource_audio_urls'],
+                                          result_encrypt_json['encrypted_isource_video_urls'])
+        result_adaptive_json = json.loads(result_adaptive.result())
+        if not result_adaptive_json['status']:
+            return result_adaptive  # package generation failed
+
+        # Deploy mss package
+        result_deploy_mss = _retry_activity(10, self.deploy_mss, source_url,
+                                            result_adaptive_json['mss_url'])
+        return result_deploy_mss
+
+
+@workflow(version='1.0', task_list='default')
+class TranscodeWorkflow(Workflow):
+    # Activity declaration.
+    source_inspection = ActivityProxy(name='SourceInspection', version='1.0',
+                                      task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_SOURCE_INSPECTION,
+                                      schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                      retry=10, error_handling=True)
+    transcode = ActivityProxy(name='Transcode', version='1.0',
+                              task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_TRANSCODE,
+                              schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                              retry=10, error_handling=True)
+    transcode_status = ActivityProxy(name='TranscodeStatus', version='1.0',
+                                     task_list=config.SWF_TASKLIST_PREFIX_SMART+config.SWF_TASKLIST_TRANSCODE,
+                                     schedule_to_close=360000, schedule_to_start=36000, start_to_close=324000,
+                                     retry=10, error_handling=True)
+
+    # Workflow declaration.
+    dash_workflow = WorkflowProxy('DashWorkflow', '1.0', task_list='default',
+                                  decision_duration=60, workflow_duration=360000)
+    hls_workflow = WorkflowProxy('HlsWorkflow', '1.0', task_list='default',
+                                 decision_duration=60, workflow_duration=360000)
+    mss_workflow = WorkflowProxy('MssWorkflow', '1.0', task_list='default',
+                                 decision_duration=60, workflow_duration=360000)
+
+    def __transcode_audio(self, source_url):
+        # Note assume both audio/video profile_id starts at 0, so we only care
+        # about how many profiles we need to transcode.
+        num_of_audio_profiles = 5
+        result_transcode_audio = map(_retry_activity, 10,
+                                     self.transcode,
+                                     [source_url]*num_of_audio_profiles,
+                                     ['audio']*num_of_audio_profiles,
+                                     range(num_of_audio_profiles))
+        isource_audio_urls = [url.result() for url in result_transcode_audio]
+        return isource_audio_urls
+
+    def __transcode_video(self, source_url):
+        num_of_video_profiles = 14
+        result_transcode_video = map(_retry_activity, 10,
+                                     self.transcode,
+                                     [source_url]*num_of_video_profiles,
+                                     ['video']*num_of_video_profiles,
+                                     range(num_of_video_profiles))
+        isource_video_urls = [url.result() for url in result_transcode_video]
+        return isource_video_urls
+
+    def run(self, source_url):
+        # Source inspection.
+        result_source_inspection = _retry_activity(10, self.source_inspection,
+                                                   source_url=source_url)
+        if not json.loads(result_source_inspection.result())['status']:
+            return False
+
+        # Transcode audio and video according to profile settings.
+
+        # Transcode audio.
+        isource_audio_urls = self.__transcode_audio(source_url)
+        # Transcode video.
+        isource_video_urls = self.__transcode_video(source_url)
+
+        # Transcode status checking.
+        result_transcode_status = _retry_activity(10, self.transcode_status,
+                                                  source_url,
+                                                  isource_audio_urls,
+                                                  isource_video_urls)
+        if not json.loads(result_transcode_status.result())['status']:
+            return False
+
+        # Dash workflow
+        self.dash_workflow(source_url, isource_audio_urls[0:3],
+                           isource_video_urls[0:7])
+        # Hls workflow
+        self.hls_workflow(source_url, isource_audio_urls[0:3],
+                          isource_video_urls[0:7])
+        # Mss workflow
+        self.mss_workflow(source_url, isource_audio_urls[2:],
+                          isource_video_urls[9:])
+
+        return True
+
+
+def heartbeat_thread(interval, func, event):
+    while not event.is_set():
+        func()
+        event.wait(interval)
+
+
+def run_cmd(script, input, heartbeat_func):
+    # Create the thread to send heartbeat.
+    stop_event = threading.Event()
+    threading.Thread(target=heartbeat_thread, args=(7 * 60, heartbeat_func,
+                                                    stop_event)).start()
+    # Execute the command.
+    cmd = config.GEARMAN_ROOT_SCRIPT_PATH + script
+    p = Popen([cmd], stdout=PIPE, stdin=PIPE, stderr=STDOUT)
+    result = p.communicate(input=input)[0]
+    # Stop the thread.
+    stop_event.set()
+
+    return result
+
+
+@activity(version='1.0')
+class SourceInspection(Activity):
+
+    def run(self, source_url):
+        input = str(json.dumps({'stage': 'source_inspection',
+                                'source_url': source_url}))
+        result = run_cmd('source_inspection.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class Transcode(Activity):
+
+    def run(self, source_url, stream, profile_id):
+        input = str(json.dumps({'source_url': source_url,
+                                'stream': stream,
+                                'profile_id': profile_id}))
+
+        result = run_cmd('transcode.sh', input, self.heartbeat)
+        if json.loads(result)['status']:
+            return json.loads(result)['isource_url']
+        else:
+            return ''
+
+
+@activity(version='1.0')
+class TranscodeStatus(Activity):
+
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+        input = str(json.dumps({'stage': 'transcode',
+                                'source_url': source_url,
+                                'isource_audio_urls': isource_audio_urls,
+                                'isource_video_urls': isource_video_urls}))
+        result = run_cmd('transcode_status.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class EncryptDash(Activity):
+
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+        input = str(json.dumps({'stage': 'encrypt_dash',
+                                'source_url': source_url,
+                                'isource_audio_urls': isource_audio_urls,
+                                'isource_video_urls': isource_video_urls}))
+        result = run_cmd('encrypt_dash.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class EncryptHls(Activity):
+
+    def run(self, source_url, hls_url):
+        input = str(json.dumps({'stage': 'encrypt_hls',
+                                'source_url': source_url,
+                                'hls_url': hls_url}))
+        result = run_cmd('encrypt_hls.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class EncryptMss(Activity):
+
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+        input = str(json.dumps({'stage': 'encrypt_mss',
+                                'source_url': source_url,
+                                'isource_audio_urls': isource_audio_urls,
+                                'isource_video_urls': isource_video_urls}))
+        result = run_cmd('encrypt_mss.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class AdaptiveDash(Activity):
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+        input = str(json.dumps({'stage': 'adaptive_dash',
+                                'source_url': source_url,
+                                'encrypted_isource_audio_urls': isource_audio_urls,
+                                'encrypted_isource_video_urls': isource_video_urls}))
+        result = run_cmd('adaptive_dash.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class AdaptiveHls(Activity):
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+        input = str(json.dumps({'stage': 'adaptive_hls',
+                                'source_url': source_url,
+                                'isource_audio_urls': isource_audio_urls,
+                                'isource_video_urls': isource_video_urls}))
+        result = run_cmd('adaptive_hls.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class AdaptiveMss(Activity):
+    def run(self, source_url, isource_audio_urls, isource_video_urls):
+        input = str(json.dumps({'stage': 'adaptive_mss',
+                                'source_url': source_url,
+                                'encrypted_isource_audio_urls': isource_audio_urls,
+                                'encrypted_isource_video_urls': isource_video_urls}))
+        result = run_cmd('adaptive_mss.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class DeployDash(Activity):
+    def run(self, source_url, dash_url):
+        input = str(json.dumps({'stage': 'deploy_dash',
+                                'source_url': source_url,
+                                'dash_url': dash_url}))
+        result = run_cmd('deploy_dash.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class DeployHls(Activity):
+    def run(self, source_url, hls_url):
+        input = str(json.dumps({'stage': 'deploy_hls',
+                                'source_url': source_url,
+                                'encrypted_hls_url': hls_url}))
+        result = run_cmd('deploy_hls.sh', input, self.heartbeat)
+        return result
+
+
+@activity(version='1.0')
+class DeployMss(Activity):
+    def run(self, source_url, mss_url):
+        input = str(json.dumps({'stage': 'deploy_mss',
+                                'source_url': source_url,
+                                'mss_url': mss_url}))
+        result = run_cmd('deploy_mss.sh', input, self.heartbeat)
+        return result

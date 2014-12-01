@@ -1,0 +1,5 @@
+{
+    "stage" : "deploy_dash",
+    "source_url": "s3://videopass-theater/mezzanine/INTERNET_tid_9900014_m.mp4",
+    "dash_url": "s3://videopass-theater/stage/dash/INTERNET_tid_9900014_m.mpd"
+}

@@ -1,0 +1,110 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+
+# Built-in modules
+import json
+from subprocess import Popen, PIPE, STDOUT
+
+# Additional modules
+import boto.swf.layer2
+
+# local modules
+try:
+    from emilia import config
+except ImportError:
+    from emilia import config_default as config
+from emilia import s3
+from path import path
+
+
+boto.swf.layer2.set_default_credentials('AKIAIRSEZZD65TO5HMEQ', 'noypU8kfm51MB1FOkMNBAz0UuYNfJYijWALAH6Kx')
+
+
+def generate_isource_input(source_url, stage, protocol, audio_start_idx,
+                           num_of_audio_profiles, video_start_idx,
+                           num_of_video_profiles):
+        url_template = 'p%d_'+path(source_url).basename().namebase+'_%s.mp4'
+        isource_audio_urls = [s3.full_key(config.S3_BUCKET_ISOURCE, config.S3_ISOURCE_PREFIX, url_template % (i, 'audio')) for i in range(audio_start_idx, audio_start_idx+num_of_audio_profiles)]
+        isource_video_urls = [s3.full_key(config.S3_BUCKET_ISOURCE, config.S3_ISOURCE_PREFIX, url_template % (i, 'video')) for i in range(video_start_idx, video_start_idx+num_of_video_profiles)]
+        input = json.dumps({'stage': '%s_%s' % (stage, protocol),
+                            'source_url': source_url,
+                            'isource_audio_urls': isource_audio_urls,
+                            'isource_video_urls': isource_video_urls})
+        return input
+
+
+def generate_enc_isource_input(source_url, stage, protocol, audio_start_idx,
+                               num_of_audio_profiles, video_start_idx,
+                               num_of_video_profiles):
+        url_template = 'p%d_'+path(source_url).basename().namebase+'_%s.mp4'
+        encrypted_isource_audio_urls = [s3.full_key(config.S3_BUCKET_ISOURCE, config.S3_ENC_ISOURCE_PREFIX, url_template % (i, 'audio')) for i in range(audio_start_idx, audio_start_idx+num_of_audio_profiles)]
+        encrypted_isource_video_urls = [s3.full_key(config.S3_BUCKET_ISOURCE, config.S3_ENC_ISOURCE_PREFIX, url_template % (i, 'video')) for i in range(video_start_idx, video_start_idx+num_of_video_profiles)]
+        input = json.dumps({'stage': '%s_%s' % (stage, protocol),
+                            'source_url': source_url,
+                            'encrypted_isource_audio_urls': encrypted_isource_audio_urls,
+                            'encrypted_isource_video_urls': encrypted_isource_video_urls})
+        return input
+
+
+class SwfBaseWorker(boto.swf.layer2.ActivityWorker):
+
+    domain = config.DOMAIN
+    task_list = 'default'
+    version = '1.0'
+
+    def run(self):
+        activity_task = self.poll()
+        print activity_task
+        if 'activityId' in activity_task:
+            activity_type = activity_task['activityType']
+            activity_name = activity_type['name']
+            input = activity_task['input']
+
+            cmd = '/Users/wesleywen/Work/Videopass/videopass-encoding/scripts/%s'
+            if activity_name == 'SourceInspection':
+                cmd = cmd % 'source_inspection.sh'
+            elif activity_name == 'Transcode':
+                cmd = cmd % 'transcode.sh'
+            elif activity_name == 'EncryptDash':
+                source_url = input
+                input = generate_isource_input(source_url, 'encrypt', 'dash', 0, 3, 0, 7)
+                cmd = cmd % 'encrypt_dash.sh'
+            elif activity_name == 'EncryptHls':
+                source_url = input
+                input = generate_enc_isource_input(source_url, 'encrypt', 'hls', 0, 3, 0, 7)
+                cmd = cmd % 'encrypt_hls.sh'
+            elif activity_name == 'EncryptMss':
+                source_url = input
+                input = generate_isource_input(source_url, 'encrypt', 'mss', 2, 2, 9, 5)
+                cmd = cmd % 'encrypt_mss.sh'
+            elif activity_name == 'AdaptiveDash':
+                source_url = input
+                input = generate_enc_isource_input(source_url, 'adaptive', 'dash', 0, 3, 0, 7)
+                cmd = cmd % 'adaptive_dash.sh'
+            elif activity_name == 'AdaptiveHls':
+                source_url = input
+                input = generate_isource_input(source_url, 'adaptive', 'hls', 0, 3, 0, 7)
+                cmd = cmd % 'adaptive_hls.sh'
+            elif activity_name == 'AdaptiveMss':
+                source_url = input
+                input = generate_enc_isource_input(source_url, 'adaptive', 'mss', 2, 2, 9, 5)
+                cmd = cmd % 'adaptive_dash.sh'
+            elif activity_name == 'DeployDash':
+                source_url = input
+                dash_url = s3.full_key(config.S3_BUCKET_RELEASE, config.S3_RELEASE_PREFIX+config.S3_DASH_PREFIX, path(source_url).basename().replace('.mp4', '.mpd'))
+                input = json.dumps({'stage': 'deploy_dash', 'source_url': source_url, 'dash_url': dash_url})
+                cmd = cmd % 'deploy_dash.sh'
+            elif activity_name == 'DeployHls':
+                source_url = input
+                dash_url = s3.full_key(config.S3_BUCKET_RELEASE, config.S3_RELEASE_PREFIX+config.S3_HLS_PREFIX, path(source_url).basename().replace('.mp4', '.m3u8'))
+                input = json.dumps({'stage': 'deploy_dash', 'source_url': source_url, 'dash_url': dash_url})
+                cmd = cmd % 'deploy_hls.sh'
+            elif activity_name == 'DeployMss':
+                pass
+
+            p = Popen([cmd], stdout=PIPE, stdin=PIPE, stderr=STDOUT)
+            result = p.communicate(input=input)[0]
+
+            self.complete(result=str(result))
+        return True

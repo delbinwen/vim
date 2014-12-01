@@ -1,0 +1,10 @@
+#! /bin/bash
+#
+# source_inspection.sh
+# Copyright (C) 2014 drakeguan <drakeguan@kkbox.com>
+#
+#
+
+source /home/wesleywen/vpass-env/bin/activate
+cd /Users/wesleywen/Work/Videopass/videopass-encoding 
+invoke gearman.source_inspection

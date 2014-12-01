@@ -1,0 +1,10 @@
+#! /bin/bash
+#
+# encrypt_dash.sh
+# Copyright (C) 2014 drakeguan <drakeguan@kkbox.com>
+#
+#
+
+source /Users/wesleywen/vpass-env/bin/activate
+cd /home/ubuntu/videopass-encoding/
+invoke gearman.encrypt_dash

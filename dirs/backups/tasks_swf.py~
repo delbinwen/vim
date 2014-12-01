@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+
+# Built-in modules
+import os
+import socket
+
+# Additional modules
+import boto.swf
+from flowy.boilerplate import start_activity_worker
+from flowy.boilerplate import start_workflow_worker
+from flowy.boilerplate import workflow_starter
+import invoke
+from path import path
+
+# local modules
+import boto.swf.layer1 as layer1
+try:
+    from emilia import config
+except ImportError:
+    from emilia import config_default as config
+import swf.swf_transcode
+
+
+def _create_layer1(region):
+    # Set region.
+    for reg in boto.swf.regions():
+        if region == reg.name:
+            region = reg
+            break
+
+    return layer1.Layer1(region=region)
+
+
+def _default_identity():
+    identity = "%s-%s" % (socket.gethostname(), os.getpid())
+    return identity[-256:]
+
+
+@invoke.task
+def start_workflow(task_list, source_url):
+    """Start a new workflow execution."""
+    source_url = path(source_url)
+    execution_id = source_url.basename()[:source_url.basename().find('_m')]
+    l1 = _create_layer1('ap-northeast-1')
+    ws = workflow_starter(config.SWF_DOMAIN, config.SWF_WORKFLOW_NAME,
+                          config.SWF_WORKFLOW_VERSION, task_list,
+                          decision_duration=60, workflow_duration=360000, id=execution_id, layer1=l1)
+    return ws.start(source_url=source_url)
+
+
+@invoke.task
+def start_workflow_runner(task_list):
+    """Start a new workflow runner."""
+    l1 = _create_layer1('ap-northeast-1')
+    start_workflow_worker(config.SWF_DOMAIN, task_list, l1, False,
+                          package=swf.swf_transcode,
+                          identity=_default_identity())
+
+
+@invoke.task
+def start_activity_runner(task_list):
+    """Start a new activity runner."""
+    l1 = _create_layer1('ap-northeast-1')
+    start_activity_worker(config.SWF_DOMAIN, task_list, l1, False,
+                          package=swf.swf_transcode,
+                          identity=_default_identity())

@@ -1,0 +1,161 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set hls is ai et sw=4 sts=4 ts=8 nu ft=python:
+#
+# Copyright © 2014 drakeguan <drakeguan@kkbox.com>
+
+# Built-in modules
+import os
+
+# Additional modules
+import path
+
+# local modules
+import common
+try:
+    import config
+except ImportError:
+    import config_default as config
+import dash
+import dglog
+import drm
+import hls
+import media
+try:
+    import template
+except ImportError:
+    import template_default as template
+
+
+def transcode_audio(infile, outfile=None, profile_id=0):
+    '''Transcode a media file into a audio-only isource with specific profile.
+
+    :param str outfile: output filename if available or automatically determined
+    :param int profile_id: 0-4
+    :return: output filename
+    :rtype: path.path()
+    '''
+    audio_filepath = media.extract_audio(infile)
+    # set output filepath
+    if not outfile:
+        outfile = path.path('p%d_' % profile_id + infile.namebase + '_audio.mp4')
+    outfile = media.transcode_audio_by_profile_id(audio_filepath, outfile, profile_id)
+    audio_filepath.unlink()
+    dglog.info('transcode_audio of %s: %s' % (infile, outfile.abspath()))
+    return outfile
+
+
+def transcode_video(infile, outfile=None, profile_id=0):
+    '''Transcode a media file into a video-only isource with specific profile.
+
+    :param str infile: object in path.path()
+    :param str outfile: output filename if available or automatically determined
+    :param int profile_id: 0-13
+    :return: output filename
+    :rtype: path.path()
+    '''
+    video_filepath = media.extract_video(infile)
+    # set output filepath
+    if not outfile:
+        outfile = path.path('p%d_' % profile_id + infile.namebase + '_video.mp4')
+    outfile = media.transcode_video_by_profile_id(video_filepath, outfile, profile_id)
+    video_filepath.unlink()
+    dglog.info('transcode_video of %s: %s' % (infile, outfile.abspath()))
+    return outfile
+
+
+def encrypt_dash_mss(title_id, audio_filepaths, video_filepaths):
+    """Apply PlayReady/Widevine DRM on given audio and video files."""
+    # Generate drm info XML file.
+    (key_id, key) = drm.get_key_pair_from_title_id(title_id)
+    drm_info = drm.generate_drm_info_xml(key_id, key)
+
+    # dglog.info('Generated DRM INFO .xml: ' + drm_info_path)
+
+    enc_audio_filepaths = [drm.apply_drm_dash_mss(drm_info, f) for f in audio_filepaths]
+    enc_video_filepaths = [drm.apply_drm_dash_mss(drm_info, f) for f in video_filepaths]
+
+    # Clean up generated drm info XML file
+    os.unlink(drm_info)
+
+    return enc_audio_filepaths, enc_video_filepaths
+
+
+def adaptive_dash_localfile(audio_filepaths, video_filepaths, mpd_filepath):
+    '''Generate DASH package.
+
+    * Make it self-contained.
+    * Fix generate .mpd.
+    * Fix init.mp4.
+    * Update .mpd for DRM if necessary.
+
+    :param list audio_filepaths: a list of audio filepaths in abspath
+    :param list video_filepaths: a list of video filepaths in abspath
+    :param str mpd_filepath: generated MPD filepath
+    :return: mpd_filepath
+    :rtype: path.path()
+    '''
+    mpd_filepath = path.path(mpd_filepath)
+    # generate DASH
+    mpd_tmp_filepath = dash.generate_dash(audio_filepaths, video_filepaths)
+    # make DASH self-contained
+    segment_folder = path.path(mpd_filepath).namebase  # /ooxx/asdf/123.mpd => 123
+    dash.make_dash_selfcontained(mpd_tmp_filepath, mpd_filepath, segment_folder)
+    os.unlink(mpd_tmp_filepath)
+    # fix audio_init.mp4
+    # now, we just remove all types (iso5, dash, ...) except isom in ftyp box
+    # because some Android (Qualcomm-based) can only handle isom.
+    dash.fix_init_mp4_in_mpd(mpd_filepath)
+    # swap trun / saio ordering.
+    # FIXME: patch saio.flags issue temporarily
+    dash.patch_trun_saio_in_mpd(mpd_filepath)
+    # patch .mpd with ContentProtection tags for DRM if necessary
+    dash.patch_drm_in_mpd(mpd_filepath)
+    return mpd_filepath
+
+
+def adaptive_hls_localfile(audio_filepaths, video_filepaths, m3u8_filepath):
+    '''Generate HLS package.
+
+    :param list audio_filepaths: a list of audio filepaths in abspath
+    :param list video_filepaths: a list of video filepaths in abspath
+    :param str m3u8_filepath: generated .m3u8 filepath
+    :return: m3u8_filepath
+    :rtype: path.path()
+    '''
+    m3u8_filepath = path.path(m3u8_filepath).abspath()
+    # generate HLS
+    av_tuples = hls.generate_av_tuples(audio_filepaths, video_filepaths)
+    m3u8s = [hls.generate_hls_from_av_tuple(av_tuple) for av_tuple in av_tuples]
+    # make HLS self-contained
+    package_folder = m3u8_filepath.namebase
+    # ([p0.m3u8, p1.m3u8, ...], work_folder/TOS.m3u8, TOS)
+    hls.make_hls_selfcontained(m3u8s, m3u8_filepath, package_folder=package_folder+'.hls')
+    return m3u8_filepath
+
+
+def adaptive_mss_localfile(manifest_filepath, mpd_filepath, mpd2ss_folder):
+    '''Generate MSS package by converting from DASH.
+
+    Note: manifest_filepath is the root folder.
+
+    :param str manifest_filepath: manifest's filepath
+    :param str mpd_filepath: .mpd filepath
+    :param str mpd2ss_folder: the folder of the executive mpd2ss
+    :return: manifest's filepath
+    :rtype: path.path()
+    '''
+    manifest_filepath = path.path(manifest_filepath).abspath()
+    mpd_filepath = path.path(mpd_filepath).abspath()
+    for resolution in config.MSS_RESOLUTIONS:
+        mss_folder = manifest_filepath.joinpath(resolution)
+        mss_folder.makedirs_p()
+        # generate MSS
+        cmd_text = template.MSS_CONVERSION_TML.format(
+            mpd2ss_folder=mpd2ss_folder,
+            mpd_filepath=mpd_filepath,
+            mss_folder=mss_folder,
+            resolution=resolution)
+        dglog.info('CMD for MSS: '+cmd_text)
+        common.run(cmd_text)
+    return manifest_filepath

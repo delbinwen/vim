@@ -1,0 +1,17 @@
+arrow==0.4.4
+asteval==0.9.3
+awscli==1.6.2
+beautifulsoup4==4.3.2
+boto==2.32.1
+configobj==5.0.6
+decorator==3.4.0
+filechunkio==1.5
+fluent-logger==0.3.4
+invoke==0.9.0
+Logbook==0.7.0
+lxml==3.3.5
+m3u8==0.1.9
+path.py==5.2
+requests==2.3.0
+sh==1.09
+flowy==0.3.2
